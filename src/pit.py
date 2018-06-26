@@ -11,7 +11,7 @@ class TestSuite(object):
   def run(self):
     test_case_reports = []
     for test_case in self.test_cases:
-      test_case_report = test_case.run()
+      test_case_report = test_case.execute()
       test_case_reports.append(test_case_report)
     return test_case_reports
 
@@ -19,33 +19,47 @@ class TestSuite(object):
 class TestCase(object):
   __metaclass__ = ABCMeta
 
-  def __init__(self, name, pre_conditions=[], invariants=[], post_conditions=[]):
+  def __init__(self, name, preconditions=[], invariants=[], postconditions=[]):
     self.name = name
-    self.pre_conditions = pre_conditions
+    self.preconditions = preconditions
     self.invariants = invariants
-    self.post_conditions = post_conditions
+    self.postconditions = postconditions
+
+  def verify_preconditions(self):
+    return [c.evaluate() for c in self.preconditions]
+
+  def verify_invariants(self, t):
+    return [c.evaluate(t) for c in self.invariants]
+
+  def verify_preconditions(self):
+    return [c.evaluate() for c in self.postconditions]
+
+  def execute(self):
+    preconditions_evaluation = self.verify_preconditions()
+    self.run()
+    postconditions_evaluation = self.verify_postconditions()
 
   @abstractmethod
   def run(self): pass
 
 
-class Report():
-  def __init__(self, test_case, passed=True, pre_conditions=[], invariants=[], post_conditions=[]):
+class Report(object):
+  def __init__(self, test_case, passed=True, preconditions=[], invariants=[], postconditions=[]):
     self.test_case = test_case
     self.passed = passed
-    self.pre_conditions = pre_conditions
+    self.preconditions = preconditions
     self.invariants = invariants
-    self.post_conditions = post_conditions
+    self.postconditions = postconditions
 
 
-class ConditionEvaluation():
+class ConditionEvaluation(object):
   def __init__(self, failed=[], passed=[], violations=[]):
     self.failed = failed
     self.passed = passed
     self.violations = violations
 
 
-class Violation():
+class Violation(object):
   def __init__(self, actual, t, condition):
     self.actual = actual
     self.t = t
