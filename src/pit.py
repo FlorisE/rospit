@@ -31,7 +31,7 @@ class TestCase(object):
   def verify_invariants(self, t):
     return [c.evaluate(t) for c in self.invariants]
 
-  def verify_preconditions(self):
+  def verify_postconditions(self):
     return [c.evaluate() for c in self.postconditions]
 
   def execute(self):

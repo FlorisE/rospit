@@ -6,10 +6,26 @@ class MockTestCase(TestCase):
   def __init__(self, name):
     TestCase.__init__(self, name)
     self.ran = False
+    self.verify_preconditions_called = False
+    self.verify_postconditions_called = False
+    self.verify_invariants_called_at_ts = []
 
   def run(self):
     self.ran = True
     return Report(self)
+
+  def verify_preconditions(self):
+    self.verify_preconditions_called = True
+    return super(MockTestCase, self).verify_preconditions()
+
+  def verify_postconditions(self):
+    self.verify_postconditions_called = True
+    return super(MockTestCase, self).verify_postconditions()
+
+  def verify_invariants(self, t):
+    self.verify_invariants_called_at_ts.append(t)
+    return self.verify_invariants(t)
+
 
 
 VALID_CAT_FROM = 0
@@ -30,10 +46,14 @@ class ConcreteInCategoryCondition(InCategoryCondition):
       return "cat 3"
 
 
-EXPECT_FALSE_AT  = [0, 1]
-EXPECT_TRUE_AT   = [2, 3] 
-MEASURE_FALSE_AT = [0, 2]
-MEASURE_TRUE_AT  = [1, 3]
+EXPECT_FALSE_AND_MEASURE_FALSE_AT = 0
+EXPECT_FALSE_AND_MEASURE_TRUE_AT  = 1
+EXPECT_TRUE_AND_MEASURE_FALSE_AT  = 2
+EXPECT_TRUE_AND_MEASURE_TRUE_AT   = 3
+EXPECT_FALSE_AT  = [EXPECT_FALSE_AND_MEASURE_FALSE_AT, EXPECT_FALSE_AND_MEASURE_TRUE_AT]
+EXPECT_TRUE_AT   = [EXPECT_TRUE_AND_MEASURE_FALSE_AT,  EXPECT_TRUE_AND_MEASURE_TRUE_AT] 
+MEASURE_FALSE_AT = [EXPECT_FALSE_AND_MEASURE_FALSE_AT, EXPECT_TRUE_AND_MEASURE_FALSE_AT]
+MEASURE_TRUE_AT  = [EXPECT_FALSE_AND_MEASURE_TRUE_AT,  EXPECT_TRUE_AND_MEASURE_TRUE_AT]
 
 
 class ConcreteBinaryCondition(BinaryCondition):
@@ -45,15 +65,15 @@ class ConcreteBinaryCondition(BinaryCondition):
     BinaryCondition.__init__(self, name)
 
   def expect_at(self, t):
-    if t == 0 or t == 1:
+    if t == EXPECT_FALSE_AND_MEASURE_FALSE_AT or t == EXPECT_FALSE_AND_MEASURE_TRUE_AT:
       return False
-    elif t == 2 or t == 3:
+    elif t == EXPECT_TRUE_AND_MEASURE_FALSE_AT or t == EXPECT_TRUE_AND_MEASURE_TRUE_AT:
       return True
 
   def measure_at(self, t):
-    if t == 0 or t == 2:
+    if t == EXPECT_FALSE_AND_MEASURE_FALSE_AT or t == EXPECT_TRUE_AND_MEASURE_FALSE_AT:
       return False
-    elif t == 1 or t == 3:
+    elif t == EXPECT_FALSE_AND_MEASURE_TRUE_AT or t == EXPECT_TRUE_AND_MEASURE_TRUE_AT:
       return True
     
 
@@ -77,6 +97,19 @@ class TestTestSuite(unittest.TestCase):
     self.test_suite.test_cases.append(test_case_two)
     reports = self.test_suite.run()
     self.assertEqual(len(reports), 2)
+
+
+class TestTestCase(unittest.TestCase):
+  def setUp(self):
+    self.test_case = MockTestCase("Test case")
+
+  def test_execute_verifies_preconditions(self):
+    self.test_case.execute()
+    self.assertTrue(self.test_case.verify_preconditions_called)
+
+  def test_execute_verifies_postconditions(self):
+    self.test_case.execute()
+    self.assertTrue(self.test_case.verify_postconditions_called)
     
 
 class InCategoryConditionTests(unittest.TestCase):
