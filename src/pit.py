@@ -32,7 +32,7 @@ class TestSuite(object):
     """
     __metaclass__ = ABCMeta
 
-    def __init__(self, name):
+    def __init__(self, name=""):
         self.name = name
         self.test_cases = []
 
@@ -54,7 +54,7 @@ class TestCase(object):
     """
     __metaclass__ = ABCMeta
 
-    def __init__(self, name, preconditions=None, invariants=None,
+    def __init__(self, name="", preconditions=None, invariants=None,
                  postconditions=None):
         self.name = name
         if preconditions is None:
@@ -124,7 +124,7 @@ class Condition(object):
     """
     __metaclass__ = ABCMeta
 
-    def __init__(self, name):
+    def __init__(self, name=""):
         self.name = name
 
     @abstractmethod
@@ -154,7 +154,7 @@ class InCategoryCondition(Condition, Measurable):
     """
     __metaclass__ = ABCMeta
 
-    def __init__(self, name, categories=None):
+    def __init__(self, name="", categories=None):
         Condition.__init__(self, name)
         if categories is None:
             categories = set()
@@ -180,7 +180,7 @@ class BinaryCondition(Condition, Measurable):
     """
     __metaclass__ = ABCMeta
 
-    def __init__(self, name):
+    def __init__(self, name=""):
         Condition.__init__(self, name)
 
     def verify(self, t):
@@ -208,7 +208,7 @@ class NumericCondition(Condition, Measurable):
     __metaclass__ = ABCMeta
 
     def __init__(
-            self, name, lower_limit_is_inclusive=True,
+            self, name="", lower_limit_is_inclusive=True,
             upper_limit_is_inclusive=True):
         Condition.__init__(self, name)
         self.lower_limit_is_inclusive = lower_limit_is_inclusive
