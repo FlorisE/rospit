@@ -207,20 +207,22 @@ class NumericCondition(Condition, Measurable):
     """
     __metaclass__ = ABCMeta
 
-    def __init__(self, name, least_is_inclusive=True, most_is_inclusive=True):
+    def __init__(
+            self, name, lower_limit_is_inclusive=True,
+            upper_limit_is_inclusive=True):
         Condition.__init__(self, name)
-        self.least_is_inclusive = least_is_inclusive
-        self.most_is_inclusive = most_is_inclusive
+        self.lower_limit_is_inclusive = lower_limit_is_inclusive
+        self.upper_limit_is_inclusive = upper_limit_is_inclusive
 
     @abstractmethod
-    def at_least(self, time):
+    def lower_limit_at(self, time):
         """
         Sets an lower bound at the specified time
         """
         pass
 
     @abstractmethod
-    def at_most(self, time):
+    def upper_limit_at(self, time):
         """
         Sets an upper bound at the specified time
         """
@@ -228,17 +230,17 @@ class NumericCondition(Condition, Measurable):
 
     def verify(self, t):
         measured = self.measure_at(t)
-        least_at_t = self.at_least(t)
-        most_at_t = self.at_most(t)
-        if self.most_is_inclusive:
-            lower_than_most_at = measured <= most_at_t
+        lower_limit = self.lower_limit_at(t)
+        upper_limit = self.upper_limit_at(t)
+        if self.upper_limit_is_inclusive:
+            lower_than_upper_limit = measured <= upper_limit
         else:
-            lower_than_most_at = measured < most_at_t
-        if self.least_is_inclusive:
-            higher_than_least_at = measured >= least_at_t
+            lower_than_upper_limit = measured < upper_limit
+        if self.lower_limit_is_inclusive:
+            higher_than_lower_limit = measured >= lower_limit
         else:
-            higher_than_least_at = measured > least_at_t
-        return lower_than_most_at and higher_than_least_at
+            higher_than_lower_limit = measured > lower_limit
+        return lower_than_upper_limit and higher_than_lower_limit
 
     @abstractmethod
     def measure_at(self, time):
