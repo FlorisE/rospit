@@ -11,15 +11,16 @@ class Runner(object):
 
     def __init__(self):
         self.reports = []
+        self.last_suite = None
 
     def run_suite(self, test_suite):
         """
         Runs the specified test_suite
         """
-        report = test_suite.run()
-        self.reports.append(report)
+        self.last_suite = test_suite
+        return test_suite.run()
 
-    def run_autodetect(self):
+    def run_all(self):
         """
         Autodetect test suites and runs them
         """
@@ -40,12 +41,18 @@ class TestSuite(object):
         """
         Runs all the test cases in this test suite
         """
-        return [test_case.execute() for test_case in self.test_cases]
+        test_case_reports = [tc.execute() for tc in self.test_cases]
+        return TestSuiteReport(test_case_reports)
 
 
-ExecutionResults = namedtuple(
-    "ExecutionResults",
-    ["preconditions", "run_result", "postconditions"])
+TestCaseReport = namedtuple(
+    "TestCaseReport",
+    ["test_case", "preconditions", "invariants", "postconditions"])
+
+
+TestSuiteReport = namedtuple(
+    "TestSuiteReport",
+    ["test_case_reports"])
 
 
 class TestCase(object):
@@ -90,10 +97,10 @@ class TestCase(object):
         Verifies the preconditions, runs the test, verifies the postconditions
         """
         preconditions_evaluation = self.verify_preconditions()
-        run_result = self.run()
+        invariants = self.run()
         postconditions_evaluation = self.verify_postconditions()
-        return ExecutionResults(preconditions_evaluation, run_result,
-                                postconditions_evaluation)
+        return TestCaseReport(self, preconditions_evaluation, invariants,
+                              postconditions_evaluation)
 
     @abstractmethod
     def run(self):
@@ -103,148 +110,344 @@ class TestCase(object):
         pass
 
 
-Report = namedtuple(
-    "Report",
-    ["test_case", "passed", "preconditions", "invariants", "postconditions"])
+class Evaluation(object):
+    """
+    Evaluation produced by an Evaluator
+    """
+    def __init__(self, measurement, condition, nominal):
+        self.measurement = measurement
+        self.condition = condition
+        self.nominal = nominal
 
 
-ConditionEvaluationResults = namedtuple(
-    "ConditionEvaluationResults",
-    ["failed", "passed", "violations"])
+class CompositeEvaluation(Evaluation):
+    """
+    Evaluation which consists of a list of evaluations for a single measurement
+    """
+    def __init__(self, measurement, condition, evaluations):
+        Evaluation.__init__(
+            self, measurement, condition,
+            all([evaluation.nominal for evaluation in evaluations]))
+        self.evaluations = evaluations
 
 
-Violation = namedtuple(
-    "Violation",
-    ["time", "conditions"])
+class TimestampEvaluationPair(object):
+    """
+    Pair of a timestamp and an evaluation
+    """
+    def __init__(self, timestamp, evaluation):
+        self.timestamp = timestamp
+        self.evaluation = evaluation
+
+
+class ConditionEvaluatorPair(object):
+    """
+    Pair of a condition and an evaluator
+    """
+    def __init__(self, condition, evaluator):
+        self.condition = condition
+        self.evaluator = evaluator
 
 
 class Condition(object):
     """
-    Superclass for conditions
+    Abstract base class for conditions
     """
     __metaclass__ = ABCMeta
 
-    def __init__(self, name=""):
+    def __init__(self, name):
         self.name = name
 
-    @abstractmethod
-    def verify(self, time):
-        """
-        Verifies the condition
-        """
-        pass
 
-
-class Measurable(object):
+class Evaluator(object):
     """
-    Mixin to make a measurement
-    """
-
-    @abstractmethod
-    def measure_at(self, time):
-        """
-        Measures at time
-        """
-        pass
-
-
-class InCategoryCondition(Condition, Measurable):
-    """
-    Condition that a value is within a list of accepted values
+    Abstract base class for evaluators
     """
     __metaclass__ = ABCMeta
 
-    def __init__(self, name="", categories=None):
-        Condition.__init__(self, name)
-        if categories is None:
-            categories = set()
-        self.categories = categories
-
-    def verify(self, t):
-        """
-        Measure the category and verify whether it is allowed
-        """
-        return self.measure_at(t) in self.categories
+    def __init__(self, sensor):
+        self.sensor = sensor
 
     @abstractmethod
-    def measure_at(self, time):
+    def evaluate(self, condition, measurement):
         """
-        Measures at time
+        Executes the evaluator by checking the measurement using the condition
         """
         pass
 
 
-class BinaryCondition(Condition, Measurable):
+class Measurement(object):
+    """
+    Contains a measurement
+    """
+    __metaclass__ = ABCMeta
+
+
+class Sensor(object):
+    """
+    Abstract base class for sensors
+    """
+    __metaclass__ = ABCMeta
+
+    def __init__(self):
+        pass
+
+    @abstractmethod
+    def sense(self):
+        """
+        Reads the sensor value
+        """
+        pass
+
+
+class BinaryConditionEvaluator(Evaluator):
+    """
+    Evaluator for binary values
+    """
+    def __init__(self, sensor):
+        Evaluator.__init__(self, sensor)
+
+    def evaluate(self, condition, measurement=None):
+        if measurement is None:
+            measurement = self.sensor.sense()
+        nominal = measurement.value == condition.value
+        return Evaluation(measurement, condition, nominal)
+
+
+class BinarySensor(Sensor):
+    """
+    Sensor that returns a binary value
+    """
+    __metaclass__ = ABCMeta
+
+    def __init__(self):
+        Sensor.__init__(self)
+
+    @abstractmethod
+    def sense(self):
+        pass
+
+
+class BinaryMeasurement(Measurement):
+    """
+    Measurement of a binary value
+    """
+    def __init__(self, value):
+        self.value = value
+
+
+class BinaryCondition(Condition):
     """
     Condition that is either True or False
     """
     __metaclass__ = ABCMeta
 
-    def __init__(self, name=""):
+    def __init__(self, value, name=""):
         Condition.__init__(self, name)
-
-    def verify(self, t):
-        return self.measure_at(t) == self.expect_at(t)
-
-    @abstractmethod
-    def expect_at(self, time):
-        """
-        Get the expected value at the specified time
-        """
-        pass
-
-    @abstractmethod
-    def measure_at(self, time):
-        """
-        Measures at time
-        """
-        pass
+        self.value = value
 
 
-class NumericCondition(Condition, Measurable):
+class InCategoryConditionEvaluator(Evaluator):
     """
-    A condition for a numeric function
+    Evaluator for values that should be in a certain category
+    """
+    def __init__(self, sensor):
+        Evaluator.__init__(self, sensor)
+
+    def evaluate(self, condition, measurement=None):
+        if measurement is None:
+            measurement = self.sensor.sense()
+        nominal = measurement.category in condition.categories
+        return Evaluation(measurement, condition, nominal)
+
+
+class CategorySensor(Sensor):
+    """
+    Sensor that returns a categorical value
+    """
+    __metaclass__ = ABCMeta
+
+    def __init__(self):
+        Sensor.__init__(self)
+
+    @abstractmethod
+    def sense(self):
+        pass
+
+
+class CategoryMeasurement(Measurement):
+    """
+    Measurement of a in category value
+    """
+    def __init__(self, category):
+        self.category = category
+
+
+class InCategoriesCondition(Condition):
+    """
+    Condition that a value is within a list of accepted values
+    """
+    __metaclass__ = ABCMeta
+
+    def __init__(self, categories=None, name=""):
+        Condition.__init__(self, name)
+        if categories is None:
+            categories = set()
+        self.categories = categories
+
+
+class LowerLimitEvaluator(Evaluator):
+    """
+    Evaluator for the lower limit of numeric conditions
+    """
+    def __init__(self, sensor):
+        Evaluator.__init__(self, sensor)
+
+    def evaluate(self, condition, measurement=None):
+        """
+        Verifies whether measurement matches the lower limit condition
+        """
+        if measurement is None:
+            measurement = self.sensor.sense()
+
+        if condition.lower_limit_is_inclusive:
+            nominal = measurement.value >= condition.lower_limit
+        else:
+            nominal = measurement.value > condition.lower_limit
+
+        return Evaluation(measurement, condition, nominal)
+
+
+class UpperLimitEvaluator(Evaluator):
+    """
+    Evaluator for the upper limit of numeric conditions
+    """
+    def __init__(self, sensor):
+        Evaluator.__init__(self, sensor)
+
+    def evaluate(self, condition, measurement=None):
+        """
+        Verifies whether measurement matches the upper limit condition
+        """
+        if measurement is None:
+            measurement = self.sensor.sense()
+
+        if condition.upper_limit_is_inclusive:
+            nominal = measurement.value <= condition.upper_limit
+        else:
+            nominal = measurement.value < condition.upper_limit
+
+        return Evaluation(measurement, condition, nominal)
+
+
+class BothLimitsEvaluator(LowerLimitEvaluator, UpperLimitEvaluator):
+    """
+    Evaluator for numeric conditions
+    """
+    def __init__(self, sensor):
+        LowerLimitEvaluator.__init__(self, sensor)
+        UpperLimitEvaluator.__init__(self, sensor)
+
+    def evaluate(self, condition, measurement=None):
+        """
+        Verifies whether measurement matches the lower limit and
+        upper limit conditions
+        """
+        if measurement is None:
+            measurement = self.sensor.sense()
+
+        lower_limit_eval = LowerLimitEvaluator.evaluate(
+            self, condition, measurement)
+        upper_limit_eval = UpperLimitEvaluator.evaluate(
+            self, condition, measurement)
+
+        return CompositeEvaluation(
+            measurement, condition,
+            [lower_limit_eval, upper_limit_eval])
+
+
+class NumericSensor(Sensor):
+    """
+    Sensor that reads a numeric value
+    """
+    __metaclass__ = ABCMeta
+
+    def __init__(self):
+        Sensor.__init__(self)
+
+    @abstractmethod
+    def sense(self):
+        pass
+
+
+class NumericMeasurement(Measurement):
+    """
+    Measurement of a numeric value
+    """
+    def __init__(self, value):
+        self.value = value
+
+
+Limit = namedtuple("Limit", "limit is_inclusive")
+
+
+def get_inclusive_limit(value):
+    """
+    Gets an inclusive limit at the specified value
+    >>> limit = get_inclusive_limit(-2)
+    >>> limit.limit
+    -2
+    >>> limit.is_inclusive
+    True
+    """
+    return Limit(value, True)
+
+
+def get_exclusive_limit(value):
+    """
+    Gets an exclusive limit at the specified value
+    >>> limit = get_exlusive_limit(-2)
+    >>> limit.limit
+    -2
+    >>> limit.is_inclusive
+    False
+    """
+    return Limit(value, False)
+
+
+class LowerLimitCondition(Condition):
+    """
+    A condition for a numeric function with just a lower limit
     """
     __metaclass__ = ABCMeta
 
     def __init__(
-            self, name="", lower_limit_is_inclusive=True,
-            upper_limit_is_inclusive=True):
+            self, lower_limit, name=""):
         Condition.__init__(self, name)
-        self.lower_limit_is_inclusive = lower_limit_is_inclusive
-        self.upper_limit_is_inclusive = upper_limit_is_inclusive
+        self.lower_limit = lower_limit.limit
+        self.lower_limit_is_inclusive = lower_limit.is_inclusive
 
-    @abstractmethod
-    def lower_limit_at(self, time):
-        """
-        Sets an lower bound at the specified time
-        """
-        pass
 
-    @abstractmethod
-    def upper_limit_at(self, time):
-        """
-        Sets an upper bound at the specified time
-        """
-        pass
+class UpperLimitCondition(Condition):
+    """
+    A condition for a numeric function with just an upper limit
+    """
+    __metaclass__ = ABCMeta
 
-    def verify(self, t):
-        measured = self.measure_at(t)
-        lower_limit = self.lower_limit_at(t)
-        upper_limit = self.upper_limit_at(t)
-        if self.upper_limit_is_inclusive:
-            lower_than_upper_limit = measured <= upper_limit
-        else:
-            lower_than_upper_limit = measured < upper_limit
-        if self.lower_limit_is_inclusive:
-            higher_than_lower_limit = measured >= lower_limit
-        else:
-            higher_than_lower_limit = measured > lower_limit
-        return lower_than_upper_limit and higher_than_lower_limit
+    def __init__(
+            self, upper_limit, name=""):
+        Condition.__init__(self, name)
+        self.upper_limit = upper_limit.limit
+        self.upper_limit_is_inclusive = upper_limit.is_inclusive
 
-    @abstractmethod
-    def measure_at(self, time):
-        """
-        Measures at time
-        """
-        pass
+
+class BothLimitsCondition(LowerLimitCondition, UpperLimitCondition):
+    """
+    A condition for a numeric function with a lower limit and an upper limit
+    """
+    __metaclass__ = ABCMeta
+
+    def __init__(
+            self, lower_limit, upper_limit, name=""):
+        LowerLimitCondition.__init__(self, lower_limit, name)
+        UpperLimitCondition.__init__(self, upper_limit, name)

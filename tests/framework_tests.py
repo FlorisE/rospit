@@ -1,7 +1,28 @@
 """ Tests for the PIT framework """
 import unittest
-from src.pit import TestSuite, TestCase, Report, InCategoryCondition, \
-                    BinaryCondition, NumericCondition
+from src.pit import TestSuite, \
+                    TestCase, \
+                    TestCaseReport, \
+                    TestSuiteReport, \
+                    BinaryCondition, \
+                    BinarySensor, \
+                    BinaryMeasurement, \
+                    BinaryConditionEvaluator, \
+                    InCategoriesCondition, \
+                    CategorySensor, \
+                    CategoryMeasurement, \
+                    InCategoryConditionEvaluator, \
+                    NumericSensor, \
+                    NumericMeasurement, \
+                    Limit, \
+                    LowerLimitCondition, \
+                    LowerLimitEvaluator, \
+                    UpperLimitCondition, \
+                    UpperLimitEvaluator, \
+                    BothLimitsCondition, \
+                    BothLimitsEvaluator, \
+                    get_inclusive_limit, \
+                    get_exclusive_limit
 
 
 class MockTestCase(TestCase):
@@ -18,7 +39,7 @@ class MockTestCase(TestCase):
 
     def run(self):
         self.ran = True
-        return Report(self, True, [], [], [])
+        return TestCaseReport(self, [], [], [])
 
     def verify_preconditions(self):
         self.verify_preconditions_called = True
@@ -60,8 +81,8 @@ class TestTestSuite(unittest.TestCase):
         test_case_two = MockTestCase("Test case 2")
         self.test_suite.test_cases.append(test_case_one)
         self.test_suite.test_cases.append(test_case_two)
-        reports = self.test_suite.run()
-        self.assertEqual(len(reports), 2)
+        report = self.test_suite.run()
+        self.assertIsNotNone(report)
 
 
 class TestTestCase(unittest.TestCase):
@@ -84,365 +105,341 @@ class TestTestCase(unittest.TestCase):
         self.assertTrue(self.test_case.verify_postconditions_called)
 
 
-class ConcreteInCategoryCondition(InCategoryCondition):
+class AlwaysTrueBinarySensor(BinarySensor):
     """
-    Test implementation for InCategoryCondition
+    Always returns True
     """
-    VALID_CAT_FROM = 0
-    INVALID_CAT_FROM = 2
-
-    def __init__(self, name):
-        InCategoryCondition.__init__(self, name)
-        self.categories = set(["cat 1", "cat 2"])
-
-    def measure_at(self, t):
-        if t >= 0 and t < 1:
-            return "cat 1"
-        elif t >= 1 and t < 2:
-            return "cat 2"
-        else:
-            return "cat 3"
+    def sense(self):
+        return BinaryMeasurement(True)
 
 
-class InCategoryConditionTests(unittest.TestCase):
+class AlwaysFalseBinarySensor(BinarySensor):
     """
-    Tests for the InCategoryCondition class
+    Always returns True
     """
-    def setUp(self):
-        self.condition = ConcreteInCategoryCondition("Test condition")
-
-    def test_verifies_true_if_valid(self):
-        """
-        If the verifier is valid, return True
-        """
-        self.assertTrue(
-            self.condition.verify(
-                ConcreteInCategoryCondition.VALID_CAT_FROM))
-
-    def test_verifies_false_if_invalid(self):
-        """
-        If the verifier is invalid, return False
-        """
-        self.assertFalse(
-            self.condition.verify(
-                ConcreteInCategoryCondition.INVALID_CAT_FROM))
+    def sense(self):
+        return BinaryMeasurement(False)
 
 
-class ConcreteBinaryCondition(BinaryCondition):
-    '''
-    Verifies correct at t == 0 and t == 3
-    Verifies incorrect at t == 1 and t == 2
-    '''
-    EXPECT_FALSE_AND_MEASURE_FALSE_AT = 0
-    EXPECT_FALSE_AND_MEASURE_TRUE_AT = 1
-    EXPECT_TRUE_AND_MEASURE_FALSE_AT = 2
-    EXPECT_TRUE_AND_MEASURE_TRUE_AT = 3
-    EXPECT_FALSE_AT = [EXPECT_FALSE_AND_MEASURE_FALSE_AT,
-                       EXPECT_FALSE_AND_MEASURE_TRUE_AT]
-    EXPECT_TRUE_AT = [EXPECT_TRUE_AND_MEASURE_FALSE_AT,
-                      EXPECT_TRUE_AND_MEASURE_TRUE_AT]
-    MEASURE_FALSE_AT = [EXPECT_FALSE_AND_MEASURE_FALSE_AT,
-                        EXPECT_TRUE_AND_MEASURE_FALSE_AT]
-    MEASURE_TRUE_AT = [EXPECT_FALSE_AND_MEASURE_TRUE_AT,
-                       EXPECT_TRUE_AND_MEASURE_TRUE_AT]
-
-    def __init__(self, name):
-        BinaryCondition.__init__(self, name)
-
-    def expect_at(self, time):
-        if time in ConcreteBinaryCondition.EXPECT_FALSE_AT:
-            return False
-        elif time in ConcreteBinaryCondition.EXPECT_TRUE_AT:
-            return True
-        else:
-            raise Exception("Invalid input for test")
-
-    def measure_at(self, time):
-        if time in ConcreteBinaryCondition.MEASURE_FALSE_AT:
-            return False
-        elif time in ConcreteBinaryCondition.MEASURE_TRUE_AT:
-            return True
-        else:
-            raise Exception("Invalid input for test")
-
-
-class BinaryConditionTests(unittest.TestCase):
+def evaluate_binary_condition(expected, actual):
     """
-    Tets for the BinaryCondition class
+    Evaluates a binary condition
     """
-    def setUp(self):
-        self.condition = ConcreteBinaryCondition("Test condition")
-
-    def test_verifies_if_expect_and_measure_both_true(self):
-        """
-        In this case the condition is valid because we measured true and
-        expected true.
-        """
-        self.assertTrue(
-            self.condition.verify(
-                ConcreteBinaryCondition.EXPECT_TRUE_AND_MEASURE_TRUE_AT))
-
-    def test_verifies_if_expect_and_measure_both_false(self):
-        """
-        In this case the condition is valid because we measured false and
-        expected false.
-        """
-        self.assertTrue(
-            self.condition.verify(
-                ConcreteBinaryCondition.EXPECT_FALSE_AND_MEASURE_FALSE_AT))
-
-    def test_verifies_false_if_expect_false_and_measure_true(self):
-        """
-        In this case the condition is invalid because we measured true but
-        expected false.
-        """
-        self.assertFalse(
-            self.condition.verify(
-                ConcreteBinaryCondition.EXPECT_FALSE_AND_MEASURE_TRUE_AT))
-
-    def test_verifies_false_if_expect_true_and_measure_false(self):
-        """
-        In this case the condition is invalid because we measured false but
-        expected true
-        """
-        self.assertFalse(
-            self.condition.verify(
-                ConcreteBinaryCondition.EXPECT_TRUE_AND_MEASURE_FALSE_AT))
+    condition = BinaryCondition(expected)
+    if actual:
+        sensor = AlwaysTrueBinarySensor()
+    else:
+        sensor = AlwaysFalseBinarySensor()
+    evaluator = BinaryConditionEvaluator(sensor)
+    evaluation = evaluator.evaluate(condition)
+    return (condition, sensor, evaluator, evaluation)
 
 
-class ConcreteNumericCondition(NumericCondition):
+class BinaryEvaluatorTest(unittest.TestCase):
     """
-    Test implementation for the NumericCondition class
-    For all time, expected value is 0, min is -2, max is 2
+    Tests for binary evaluator
     """
-    # defining interesting values
-    EXPECTED_VALUE = 0
-    LOWER_LIMIT_VALUE = -2
-    UPPER_LIMIT_VALUE = 2
 
-    # definding interesting times
-    EXACT_MATCH_AT = 1
-    HIGHER_THAN_UPPER_LIMIT_AT = 2
-    LOWER_THAN_LOWER_LIMIT_AT = 3
-    ON_UPPER_LIMIT_AT = 4
-    ON_LOWER_LIMIT_AT = 5
-    HIGHER_BUT_ACCEPTABLE_AT = 6
-    LOWER_BUT_ACCEPTABLE_AT = 7
+    def test_evaluation_sets_the_condition(self):
+        """
+        Checks if the evaluator sets the condition
+        """
+        condition, _, _, evaluation = evaluate_binary_condition(True, True)
+        self.assertEqual(evaluation.condition, condition)
 
-    def __init__(
-            self, name, lower_limit_is_inclusive, upper_limit_is_inclusive):
-        NumericCondition.__init__(
-            self, name, lower_limit_is_inclusive, upper_limit_is_inclusive)
+    def test_verifies_if_expected_true_and_measured_true(self):
+        """
+        The evaluator should be nominal if true was expected and also measured
+        """
+        _, _, _, evaluation = evaluate_binary_condition(True, True)
+        self.assertTrue(evaluation.nominal)
 
-    def measure_at(self, time):
-        CNC = ConcreteNumericCondition
-        return {
-            CNC.EXACT_MATCH_AT: CNC.EXPECTED_VALUE,
-            CNC.HIGHER_THAN_UPPER_LIMIT_AT: CNC.UPPER_LIMIT_VALUE+1,
-            CNC.LOWER_THAN_LOWER_LIMIT_AT: CNC.LOWER_LIMIT_VALUE-1,
-            CNC.ON_UPPER_LIMIT_AT: CNC.UPPER_LIMIT_VALUE,
-            CNC.ON_LOWER_LIMIT_AT: CNC.LOWER_LIMIT_VALUE,
-            CNC.HIGHER_BUT_ACCEPTABLE_AT: CNC.EXPECTED_VALUE+1,
-            CNC.LOWER_BUT_ACCEPTABLE_AT: CNC.EXPECTED_VALUE-1,
-        }[time]
+    def test_verifies_if_expected_false_and_measured_false(self):
+        """
+        The evaluator should be nominal if true was expected and also measured
+        """
+        _, _, _, evaluation = evaluate_binary_condition(False, False)
+        self.assertTrue(evaluation.nominal)
 
-    def upper_limit_at(self, time):
-        return ConcreteNumericCondition.UPPER_LIMIT_VALUE
+    def test_verifies_false_if_expected_false_and_measured_true(self):
+        """
+        The evaluator should not be nominal if true was expected
+        but not measured
+        """
+        _, _, _, evaluation = evaluate_binary_condition(False, True)
+        self.assertFalse(evaluation.nominal)
 
-    def lower_limit_at(self, time):
-        return ConcreteNumericCondition.LOWER_LIMIT_VALUE
+    def test_verifies_false_if_expected_true_and_measured_false(self):
+        """
+        The evaluator should not be nominal if true was expected
+        but not measured
+        """
+        _, _, _, evaluation = evaluate_binary_condition(True, False)
+        self.assertFalse(evaluation.nominal)
 
 
-class InclusiveConcreteNumericCondition(ConcreteNumericCondition):
+valid_category = "valid_category"
+
+
+class ValidCategorySensor(CategorySensor):
     """
-    Test implementation for the NumericCondition class
-    Using least_is_inclusive = most_is_inclusive = True
-    For all time, expected value is 0, min is -2, max is 2
+    Returns a valid category
     """
-    VALIDATE_FALSE_AT = [
-        ConcreteNumericCondition.HIGHER_THAN_UPPER_LIMIT_AT,
-        ConcreteNumericCondition.LOWER_THAN_LOWER_LIMIT_AT
-    ]
-    VALIDATE_TRUE_AT = [
-        ConcreteNumericCondition.EXACT_MATCH_AT,
-        ConcreteNumericCondition.ON_UPPER_LIMIT_AT,
-        ConcreteNumericCondition.ON_LOWER_LIMIT_AT,
-        ConcreteNumericCondition.HIGHER_BUT_ACCEPTABLE_AT,
-        ConcreteNumericCondition.LOWER_BUT_ACCEPTABLE_AT
-    ]
-
-    def __init__(self, name):
-        ConcreteNumericCondition.__init__(self, name, True, True)
+    def sense(self):
+        return CategoryMeasurement(valid_category)
 
 
-class InclusiveNumericConditionTests(unittest.TestCase):
+invalid_category = "invalid_category"
+
+
+class InvalidCategorySensor(CategorySensor):
     """
-    Tests for the NumericCondition class
+    Returns an invalid category
     """
-    def setUp(self):
-        self.condition = InclusiveConcreteNumericCondition("Test condition")
-
-    def verifier_helper(self, condition):
-        """
-        A helper function to verify whether the expected test value
-        matches the measured value
-        """
-        condition_result = self.condition.verify(condition)
-        if condition in InclusiveConcreteNumericCondition.VALIDATE_TRUE_AT:
-            return self.assertTrue(condition_result)
-        elif condition in InclusiveConcreteNumericCondition.VALIDATE_FALSE_AT:
-            return self.assertFalse(condition_result)
-        else:
-            raise Exception("Invalid input for test")
-
-    def test_verifies_if_exact_match(self):
-        """
-        In this case the condition is valid because we have an exact match
-        """
-        self.verifier_helper(
-            ConcreteNumericCondition.EXACT_MATCH_AT)
-
-    def test_verifies_false_if_higher_than_upper_limit(self):
-        """
-        In this case the condition is invalid because the measured value is
-        higher than the upper limit
-        """
-        self.verifier_helper(
-            ConcreteNumericCondition.HIGHER_THAN_UPPER_LIMIT_AT)
-
-    def test_verifies_false_if_lower_than_lower_limit(self):
-        """
-        In this case the condition is invalid because the measured value is
-        lower than the lower limit
-        """
-        self.verifier_helper(
-            ConcreteNumericCondition.LOWER_THAN_LOWER_LIMIT_AT)
-
-    def test_verifies_if_on_upper_limit(self):
-        """
-        In this case the condition is valid because the measured value is
-        on the upper limit, and the upper limit is inclusive
-        """
-        self.verifier_helper(
-            ConcreteNumericCondition.ON_UPPER_LIMIT_AT)
-
-    def test_verifies_if_on_lower_limit(self):
-        """
-        In this case the condition is valid because the measured value is
-        on the lower limit, and the lower limit is inclusive
-        """
-        self.verifier_helper(
-            ConcreteNumericCondition.ON_LOWER_LIMIT_AT)
-
-    def test_verifies_if_within_upper_limit(self):
-        """
-        In this case the condition is valid because the measured value is
-        between the expected value and the upper limit
-        """
-        self.verifier_helper(
-            ConcreteNumericCondition.HIGHER_BUT_ACCEPTABLE_AT)
-
-    def test_verifies_if_within_lower_limit(self):
-        """
-        In this case the condition is valid because the measured value is
-        between the expected value and the lower limit
-        """
-        self.verifier_helper(
-            ConcreteNumericCondition.LOWER_BUT_ACCEPTABLE_AT)
+    def sense(self):
+        return CategoryMeasurement(invalid_category)
 
 
-class ExclusiveConcreteNumericCondition(ConcreteNumericCondition):
+def evaluate_category_condition(in_categories):
     """
-    Test implementation for the NumericCondition class
-    Using least_is_inclusive = most_is_inclusive = False
+    Evaluates a category condition
     """
-    VALIDATE_FALSE_AT = [
-        ConcreteNumericCondition.HIGHER_THAN_UPPER_LIMIT_AT,
-        ConcreteNumericCondition.LOWER_THAN_LOWER_LIMIT_AT,
-        ConcreteNumericCondition.ON_UPPER_LIMIT_AT,
-        ConcreteNumericCondition.ON_LOWER_LIMIT_AT
-    ]
-    VALIDATE_TRUE_AT = [
-        ConcreteNumericCondition.EXACT_MATCH_AT,
-        ConcreteNumericCondition.HIGHER_BUT_ACCEPTABLE_AT,
-        ConcreteNumericCondition.LOWER_BUT_ACCEPTABLE_AT
-    ]
-
-    def __init__(self, name):
-        ConcreteNumericCondition.__init__(self, name, False, False)
+    condition = InCategoriesCondition([valid_category])
+    if in_categories:
+        sensor = ValidCategorySensor()
+    else:
+        sensor = InvalidCategorySensor()
+    evaluator = InCategoryConditionEvaluator(sensor)
+    evaluation = evaluator.evaluate(condition)
+    return (condition, sensor, evaluator, evaluation)
 
 
-class ExclusiveNumericConditionTests(unittest.TestCase):
+class InCategoryEvaluatorTest(unittest.TestCase):
     """
-    Tests for the NumericCondition class
+    Tests for in category evaluator
     """
-    def setUp(self):
-        self.condition = ExclusiveConcreteNumericCondition("Test condition")
+    def test_evaluation_sets_the_condition(self):
+        """
+        Checks if the evaluator sets the condition
+        """
+        condition, _, _, evaluation = evaluate_category_condition(True)
+        self.assertEqual(evaluation.condition, condition)
 
-    def verifier_helper(self, condition):
+    def test_verifies_if_in_categories(self):
         """
-        A helper function to verify whether the expected test value
-        matches the measured value
+        The evaluator should be nominal if the category is
+        in the expected categories
         """
-        condition_result = self.condition.verify(condition)
-        if condition in ExclusiveConcreteNumericCondition.VALIDATE_TRUE_AT:
-            return self.assertTrue(condition_result)
-        elif condition in ExclusiveConcreteNumericCondition.VALIDATE_FALSE_AT:
-            return self.assertFalse(condition_result)
-        else:
-            raise Exception("Invalid input for test")
+        _, _, _, evaluation = evaluate_category_condition(True)
+        self.assertTrue(evaluation.nominal)
 
-    def test_verifies_if_exact_match(self):
+    def test_verifies_false_if_not_in_categories(self):
         """
-        In this case the condition is valid because we have an exact match
+        The evaluator should be nominal if the category is
+        in the expected categories
         """
-        self.verifier_helper(
-            ConcreteNumericCondition.EXACT_MATCH_AT)
+        _, _, _, evaluation = evaluate_category_condition(False)
+        self.assertFalse(evaluation.nominal)
 
-    def test_verifies_false_if_higher_than_upper_limit(self):
-        """
-        In this case the condition is invalid because the measured value is
-        higher than the upper limit
-        """
-        self.verifier_helper(
-            ConcreteNumericCondition.HIGHER_THAN_UPPER_LIMIT_AT)
 
-    def test_verifies_false_if_lower_than_lower_limit(self):
-        """
-        In this case the condition is invalid because the measured value is
-        lower than the lower limit
-        """
-        self.verifier_helper(
-            ConcreteNumericCondition.LOWER_THAN_LOWER_LIMIT_AT)
+BELOW_LOWER_LIMIT_VALUE = -3
+LOWER_LIMIT_VALUE = -2
+BETWEEN_LOWER_LIMIT_AND_EXPECTED_VALUE = -1
+EXPECTED_VALUE = 0
+BETWEEN_EXPECTED_AND_UPPER_LIMIT_VALUE = 1
+UPPER_LIMIT_VALUE = 2
+ABOVE_UPPER_LIMIT_VALUE = 3
 
-    def test_verifies_false_if_on_upper_limit(self):
-        """
-        In this case the condition is valid because the measured value is
-        on the upper limit, and the upper limit is inclusive
-        """
-        self.verifier_helper(
-            ConcreteNumericCondition.ON_UPPER_LIMIT_AT)
 
-    def test_verifies_false_if_on_lower_limit(self):
-        """
-        In this case the condition is valid because the measured value is
-        on the lower limit, and the lower limit is inclusive
-        """
-        self.verifier_helper(
-            ConcreteNumericCondition.ON_LOWER_LIMIT_AT)
+class BelowLowerLimitNumericSensor(NumericSensor):
+    """
+    Senses a value that is below the lower limit
+    """
+    def sense(self):
+        return NumericMeasurement(BELOW_LOWER_LIMIT_VALUE)
 
-    def test_verifies_if_within_upper_limit(self):
-        """
-        In this case the condition is valid because the measured value is
-        between the expected value and the upper limit
-        """
-        self.verifier_helper(
-            ConcreteNumericCondition.HIGHER_BUT_ACCEPTABLE_AT)
 
-    def test_verifies_if_within_lower_limit(self):
+class OnLowerLimitNumericSensor(NumericSensor):
+    """
+    Senses a value that is on the lower limit
+    """
+    def sense(self):
+        return NumericMeasurement(LOWER_LIMIT_VALUE)
+
+
+class BetweenLowerLimitAndExpectedValueNumericSensor(NumericSensor):
+    """
+    Senses a value that is above the lower limit but below the expected value
+    """
+    def sense(self):
+        return NumericMeasurement(BETWEEN_LOWER_LIMIT_AND_EXPECTED_VALUE)
+
+
+class ExpectedValueNumericSensor(NumericSensor):
+    """
+    Senses the expected value
+    """
+    def sense(self):
+        return NumericMeasurement(EXPECTED_VALUE)
+
+
+class BetweenExpectedValueAndUpperLimitNumericSensor(NumericSensor):
+    """
+    Senses a value that is above the expected value but below the upper limit
+    """
+    def sense(self):
+        return NumericMeasurement(BETWEEN_EXPECTED_AND_UPPER_LIMIT_VALUE)
+
+
+class OnUpperLimitNumericSensor(NumericSensor):
+    """
+    Senses a value that is on the upper limit
+    """
+    def sense(self):
+        return NumericMeasurement(UPPER_LIMIT_VALUE)
+
+
+class AboveUpperLimitNumericSensor(NumericSensor):
+    """
+    Senses a value that is above the upper limit
+    """
+    def sense(self):
+        return NumericMeasurement(ABOVE_UPPER_LIMIT_VALUE)
+
+
+def get_numeric_sensor(value):
+    """
+    Gets a sensor which measures the desired value
+    """
+    if value < LOWER_LIMIT_VALUE:
+        sensor = BelowLowerLimitNumericSensor()
+    elif value > UPPER_LIMIT_VALUE:
+        sensor = AboveUpperLimitNumericSensor()
+    elif value == LOWER_LIMIT_VALUE:
+        sensor = OnLowerLimitNumericSensor()
+    elif value == UPPER_LIMIT_VALUE:
+        sensor = OnUpperLimitNumericSensor()
+    elif value < EXPECTED_VALUE:
+        sensor = BetweenLowerLimitAndExpectedValueNumericSensor()
+    elif value > EXPECTED_VALUE:
+        sensor = BetweenExpectedValueAndUpperLimitNumericSensor()
+    else:
+        sensor = ExpectedValueNumericSensor()
+    return sensor
+
+
+def evaluate_lower_limit_condition(value, lower_limit):
+    """
+    Evaluates a lower limit condition
+    """
+    sensor = get_numeric_sensor(value)
+    condition = LowerLimitCondition(lower_limit)
+    evaluator = LowerLimitEvaluator(sensor)
+    evaluation = evaluator.evaluate(condition)
+    return (condition, sensor, evaluator, evaluation)
+
+
+def evaluate_upper_limit_condition(value, upper_limit):
+    """
+    Evaluates an upper limit condition
+    """
+    sensor = get_numeric_sensor(value)
+    condition = UpperLimitCondition(upper_limit)
+    evaluator = UpperLimitEvaluator(sensor)
+    evaluation = evaluator.evaluate(condition)
+    return (condition, sensor, evaluator, evaluation)
+
+
+def evaluate_both_limits_condition(value, lower_limit, upper_limit):
+    """
+    Evaluate a condition with a lower and an upper limit
+    """
+    sensor = get_numeric_sensor(value)
+    condition = BothLimitsCondition(lower_limit, upper_limit)
+    evaluator = BothLimitsEvaluator(sensor)
+    evaluation = evaluator.evaluate(condition)
+    return (condition, sensor, evaluator, evaluation)
+
+
+INCLUSIVE_LOWER_LIMIT = get_inclusive_limit(LOWER_LIMIT_VALUE)
+INCLUSIVE_UPPER_LIMIT = get_inclusive_limit(UPPER_LIMIT_VALUE)
+EXCLUSIVE_LOWER_LIMIT = get_exclusive_limit(LOWER_LIMIT_VALUE)
+EXCLUSIVE_UPPER_LIMIT = get_exclusive_limit(UPPER_LIMIT_VALUE)
+
+
+class LowerLimitEvaluatorTest(unittest.TestCase):
+    """
+    Tests for the lower limit evaluator
+    """
+    def test_nominal_if_on_lower_and_inclusive(self):
         """
-        In this case the condition is valid because the measured value is
-        between the expected value and the lower limit
+        Nominal if the measurement is on the lower limit and
+        the limit is inclusive
         """
-        self.verifier_helper(
-            ConcreteNumericCondition.LOWER_BUT_ACCEPTABLE_AT)
+        _, _, _, evaluation = evaluate_lower_limit_condition(
+            LOWER_LIMIT_VALUE, INCLUSIVE_LOWER_LIMIT)
+        self.assertTrue(evaluation.nominal)
+
+    def test_not_nominal_if_on_lower_and_not_inclusive(self):
+        """
+        Not nominal if the measurement is on the lower limit and
+        the limit is not inclusive
+        """
+        _, _, _, evaluation = evaluate_lower_limit_condition(
+            LOWER_LIMIT_VALUE, EXCLUSIVE_LOWER_LIMIT)
+        self.assertFalse(evaluation.nominal)
+
+    def test_nominal_if_between_lower_and_expected(self):
+        """
+        Nominal if the measurement is between the lower limit
+        and the expected value
+        """
+        _, _, _, evaluation = evaluate_lower_limit_condition(
+            BETWEEN_LOWER_LIMIT_AND_EXPECTED_VALUE, EXCLUSIVE_LOWER_LIMIT)
+        self.assertTrue(evaluation.nominal)
+
+
+class UpperLimitEvaluatorTest(unittest.TestCase):
+    """
+    Tests for the upper limit evaluator
+    """
+    def test_nominal_if_on_upper_and_inclusive(self):
+        """
+        Nominal if the measurement is on the upper limit and
+        the limit is inclusive
+        """
+        _, _, _, evaluation = evaluate_upper_limit_condition(
+            UPPER_LIMIT_VALUE, INCLUSIVE_UPPER_LIMIT)
+        self.assertTrue(evaluation.nominal)
+
+    def test_not_nominal_if_on_upper_and_not_inclusive(self):
+        """
+        Not nominal if the measurement is on the lower limit and
+        the limit is not inclusive
+        """
+        _, _, _, evaluation = evaluate_upper_limit_condition(
+            UPPER_LIMIT_VALUE, EXCLUSIVE_UPPER_LIMIT)
+        self.assertFalse(evaluation.nominal)
+
+    def test_nominal_if_between_expected_and_upper(self):
+        """
+        Nominal if the measurement is between the lower limit
+        and the expected value
+        """
+        _, _, _, evaluation = evaluate_upper_limit_condition(
+            BETWEEN_EXPECTED_AND_UPPER_LIMIT_VALUE, EXCLUSIVE_UPPER_LIMIT)
+        self.assertTrue(evaluation.nominal)
+
+
+class BothLimitsEvaluatorTest(unittest.TestCase):
+    """
+    Tests for the both limits condition evaluator
+    """
+    def test_nominal_if_between_lower_and_upper(self):
+        """
+        Nominal if the measurement is between the lower and the upper limits
+        """
+        _, _, _, evaluation = evaluate_both_limits_condition(
+            EXPECTED_VALUE,
+            EXCLUSIVE_LOWER_LIMIT, EXCLUSIVE_UPPER_LIMIT)
+        self.assertTrue(evaluation.nominal)
