@@ -2,7 +2,7 @@
 
 from abc import ABCMeta, abstractmethod
 
-from pit.framework import Evaluator, Evaluation, Measurement, Condition, Sensor
+from rospit.framework import Evaluator, Evaluation, Measurement, Condition, Sensor
 
 
 class BinaryConditionEvaluator(Evaluator):
@@ -11,11 +11,28 @@ class BinaryConditionEvaluator(Evaluator):
     """
     def __init__(self, sensor):
         Evaluator.__init__(self, sensor)
+        self.last_measurement_value = None
+        self.last_condition_value = None
 
     def evaluate(self, condition, measurement=None):
         if measurement is None:
-            measurement = self.sensor.sense()
-        nominal = measurement.value == condition.value
+            measurement = self.call_evaluator()
+
+        if isinstance(measurement, BinaryMeasurement):
+            self.last_measurement_value = measurement.value
+        elif isinstance(measurement, bool):
+            self.last_measurement_value = measurement
+        else:
+            raise Exception("Measurement is of unexpected type")
+
+        if isinstance(condition, BinaryCondition):
+            self.last_condition_value = condition.value
+        elif isinstance(condition, bool):
+           self.last_condition_value = condition
+        else:
+            raise Exception("Condition is of unexpected type")
+
+        nominal = self.last_measurement_value == self.last_condition_value
         return Evaluation(measurement, condition, nominal)
 
 
@@ -29,7 +46,7 @@ class BinarySensor(Sensor):
         Sensor.__init__(self)
 
     @abstractmethod
-    def sense(self):
+    def sense_internal(self):
         pass
 
 

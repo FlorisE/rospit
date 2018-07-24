@@ -2,16 +2,16 @@
 
 import unittest
 
-from pit.numeric import NumericSensor, \
-                        NumericMeasurement, \
-                        LowerLimitCondition, \
-                        LowerLimitEvaluator, \
-                        UpperLimitCondition, \
-                        UpperLimitEvaluator, \
-                        BothLimitsCondition, \
-                        BothLimitsEvaluator, \
-                        get_inclusive_limit, \
-                        get_exclusive_limit
+from rospit.numeric import NumericSensor, \
+                           NumericMeasurement, \
+                           LowerLimitCondition, \
+                           LowerLimitEvaluator, \
+                           UpperLimitCondition, \
+                           UpperLimitEvaluator, \
+                           BothLimitsCondition, \
+                           BothLimitsEvaluator, \
+                           get_inclusive_limit, \
+                           get_exclusive_limit
 
 
 BELOW_LOWER_LIMIT_VALUE = -3

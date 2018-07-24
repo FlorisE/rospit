@@ -2,10 +2,10 @@
 
 import unittest
 
-from pit.category import InCategoriesCondition, \
-                         CategorySensor, \
-                         CategoryMeasurement, \
-                         InCategoryConditionEvaluator
+from rospit.category import InCategoriesCondition, \
+                            CategorySensor, \
+                            CategoryMeasurement, \
+                            InCategoryConditionEvaluator
 
 
 valid_category = "valid_category"

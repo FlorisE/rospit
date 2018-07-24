@@ -2,9 +2,9 @@
 
 import unittest
 
-from pit.framework import TestSuite, \
-                          TestCase, \
-                          TestCaseReport
+from rospit.framework import TestSuite, \
+                             TestCase, \
+                             TestCaseReport
 
 
 class MockTestCase(TestCase):

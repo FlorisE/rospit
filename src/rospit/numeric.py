@@ -4,23 +4,32 @@ from abc import ABCMeta, abstractmethod
 from collections import namedtuple
 import future  # noqa:401, pylint: disable=W0611
 
-from pit.framework import Evaluator, Evaluation, CompositeEvaluation, Sensor, \
-                          Measurement, Condition
+from rospit.framework import Evaluator, Evaluation, CompositeEvaluation, Sensor, \
+                             Measurement, Condition
 
+
+def numeric_measure(evaluator):
+    measurement = evaluator.call_evaluator()
+    if isinstance(measurement, int) or isinstance(measurement, float):
+        return NumericMeasurement(measurement)
+    elif isinstance(measurement, NumericMeasurement):
+        return measurement
+    else:
+        raise TypeError("measurement should either be a float, an int or a NumericMeasurement")
 
 class LowerLimitEvaluator(Evaluator):
     """
     Evaluator for the lower limit of numeric conditions
     """
-    def __init__(self, sensor):
-        Evaluator.__init__(self, sensor)
+    def __init__(self, evaluator):
+        Evaluator.__init__(self, evaluator)
 
     def evaluate(self, condition, measurement=None):
         """
         Verifies whether measurement matches the lower limit condition
         """
         if measurement is None:
-            measurement = self.sensor.sense()
+            measurement = numeric_measure(self)
 
         if condition.lower_limit_is_inclusive:
             nominal = measurement.value >= condition.lower_limit
@@ -34,15 +43,15 @@ class UpperLimitEvaluator(Evaluator):
     """
     Evaluator for the upper limit of numeric conditions
     """
-    def __init__(self, sensor):
-        Evaluator.__init__(self, sensor)
+    def __init__(self, evaluator):
+        Evaluator.__init__(self, evaluator)
 
     def evaluate(self, condition, measurement=None):
         """
         Verifies whether measurement matches the upper limit condition
         """
         if measurement is None:
-            measurement = self.sensor.sense()
+            measurement = numeric_measure(self)
 
         if condition.upper_limit_is_inclusive:
             nominal = measurement.value <= condition.upper_limit
@@ -56,9 +65,9 @@ class BothLimitsEvaluator(LowerLimitEvaluator, UpperLimitEvaluator):
     """
     Evaluator for numeric conditions
     """
-    def __init__(self, sensor):
-        LowerLimitEvaluator.__init__(self, sensor)
-        UpperLimitEvaluator.__init__(self, sensor)
+    def __init__(self, evaluator):
+        LowerLimitEvaluator.__init__(self, evaluator)
+        UpperLimitEvaluator.__init__(self, evaluator)
 
     def evaluate(self, condition, measurement=None):
         """
@@ -66,7 +75,7 @@ class BothLimitsEvaluator(LowerLimitEvaluator, UpperLimitEvaluator):
         upper limit conditions
         """
         if measurement is None:
-            measurement = self.sensor.sense()
+            measurement = numeric_measure(self)
 
         lower_limit_eval = LowerLimitEvaluator.evaluate(
             self, condition, measurement)
@@ -127,6 +136,15 @@ def get_exclusive_limit(value):
     return Limit(value, False)
 
 
+def try_get_limit(limit):
+    limit_type = type(limit)
+    if limit_type is float or limit_type is int:
+        return (limit, True)
+    elif limit_type is Limit:
+        return (lower_limit.limit, lower_limit.is_inclusive)
+    else:
+        raise TypeError("limit needs to be either an instance of Limit, an int or a float")
+
 class LowerLimitCondition(Condition):
     """
     A condition for a numeric function with just a lower limit
@@ -136,8 +154,7 @@ class LowerLimitCondition(Condition):
     def __init__(
             self, lower_limit, name=""):
         Condition.__init__(self, name)
-        self.lower_limit = lower_limit.limit
-        self.lower_limit_is_inclusive = lower_limit.is_inclusive
+        self.lower_limit, self.lower_limit_is_inclusive = try_get_limit(lower_limit)
 
 
 class UpperLimitCondition(Condition):
@@ -149,8 +166,7 @@ class UpperLimitCondition(Condition):
     def __init__(
             self, upper_limit, name=""):
         Condition.__init__(self, name)
-        self.upper_limit = upper_limit.limit
-        self.upper_limit_is_inclusive = upper_limit.is_inclusive
+        self.upper_limit, self.upper_limit_is_inclusive = try_get_limit(upper_limit)
 
 
 class BothLimitsCondition(LowerLimitCondition, UpperLimitCondition):

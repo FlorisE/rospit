@@ -1,9 +1,9 @@
 """ Tests for binary evaluators """
 import unittest
-from pit.binary import BinaryCondition, \
-                       BinarySensor, \
-                       BinaryMeasurement, \
-                       BinaryConditionEvaluator
+from rospit.binary import BinaryCondition, \
+                          BinarySensor, \
+                          BinaryMeasurement, \
+                          BinaryConditionEvaluator
 
 
 class AlwaysTrueBinarySensor(BinarySensor):

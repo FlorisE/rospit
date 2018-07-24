@@ -2,7 +2,7 @@
 
 from abc import ABCMeta, abstractmethod
 
-from pit.framework import Evaluator, Condition, Sensor, Evaluation, Measurement
+from rospit.framework import Evaluator, Condition, Sensor, Evaluation, Measurement
 
 
 class InCategoryConditionEvaluator(Evaluator):
