@@ -1,7 +1,7 @@
 """ Tests for in category evaluators """
 
 import unittest
-
+import add_sut
 from rospit.category import InCategoriesCondition, \
                             CategorySensor, \
                             CategoryMeasurement, \
@@ -15,7 +15,7 @@ class ValidCategorySensor(CategorySensor):
     """
     Returns a valid category
     """
-    def sense(self):
+    def sense_internal(self):
         return CategoryMeasurement(valid_category)
 
 
@@ -26,7 +26,7 @@ class InvalidCategorySensor(CategorySensor):
     """
     Returns an invalid category
     """
-    def sense(self):
+    def sense_internal(self):
         return CategoryMeasurement(invalid_category)
 
 

@@ -1,5 +1,6 @@
 """ Tests for binary evaluators """
 import unittest
+import add_sut
 from rospit.binary import BinaryCondition, \
                           BinarySensor, \
                           BinaryMeasurement, \
@@ -10,7 +11,7 @@ class AlwaysTrueBinarySensor(BinarySensor):
     """
     Always returns True
     """
-    def sense(self):
+    def sense_internal(self):
         return BinaryMeasurement(True)
 
 
@@ -18,7 +19,7 @@ class AlwaysFalseBinarySensor(BinarySensor):
     """
     Always returns True
     """
-    def sense(self):
+    def sense_internal(self):
         return BinaryMeasurement(False)
 
 

@@ -60,27 +60,67 @@ class TestSuite(object):
         """
         print("Running test suite {}".format(self.name))
         test_case_reports = [tc.execute() for tc in self.test_cases]
-        return TestSuiteReport(test_case_reports)
+        return TestSuiteReport(self, test_case_reports)
+
 
 
 class TestCaseReport(object):
-    def __init__(self, test_case, preconditions, invariants, postconditions, dependencies_met):
+    def __init__(self, test_case, preconditions, invariants, postconditions, not_passed_dependencies):
         self.test_case = test_case
         self.preconditions = preconditions
         self.invariants = invariants
         self.postconditions = postconditions
-        self.dependencies_met = dependencies_met
+        self.not_passed_dependencies = not_passed_dependencies
+        self.preconditions_nominal = all_conditions_nominal(self.preconditions)
+        self.invariants_nominal = all_conditions_nominal(self.invariants)
+        self.postconditions_nominal = all_conditions_nominal(self.postconditions)
+        self.passed = self.preconditions_nominal and \
+                      self.invariants_nominal and \
+                      self.postconditions_nominal and \
+                      len(self.not_passed_dependencies) == 0
+        self.failure_type = None if self.passed else \
+                            "dependencies" if not len(self.not_passed_dependencies) == 0 else \
+                            "preconditions" if not self.preconditions_nominal else \
+                            "invariants" if not self.invariants_nominal else \
+                            "postconditions" if not self.postconditions_nominal else ""
 
-    def passed(self):
-        return all_conditions_nominal(self.preconditions) and \
-               all_conditions_nominal(self.invariants) and \
-               all_conditions_nominal(self.postconditions) and \
-               self.dependencies_met
+    def get_failure(self):
+        if self.passed:
+            return ""
+        failed_conditions = ", ".join([get_failed_conditions(self.preconditions), get_failed_conditions(self.invariants), get_failed_conditions(self.postconditions)])
+        not_met_dependencies_string = ", ".join([tc.name if tc.name != "" else "UNKNOWN" for tc in self.not_passed_dependencies])
+        return '''<failure type="{}">{}</failure>'''.format(self.failure_type, ", ".join([failed_conditions, not_met_dependencies_string]))
 
 
-TestSuiteReport = namedtuple(
-    "TestSuiteReport",
-    ["test_case_reports"])
+    def get_junit_xml(self):
+        if self.passed:
+            return '''\
+<testcase classname="{}" name="{}" />'''.format(self.test_case.name, self.test_case.name)
+        else:
+            return '''\
+<testcase classname="{}" name="{}">
+{}
+</testcase>'''.format(self.test_case.name, self.test_case.name, self.failure_type)
+
+
+
+class TestSuiteReport(object):
+    def __init__(self, test_suite, test_case_reports):
+        self.test_suite = test_suite
+        self.test_case_reports = test_case_reports
+
+    def get_junit_xml(self):
+        return '''\
+<testsuite name="{}" tests="{}">
+{}
+</testsuite>'''.format(self.test_suite.name if self.test_suite is not None else "UNKNOWN", \
+                       len(self.test_case_reports), "\n".join(
+                           ["    " + test_case_report.get_junit_xml() for test_case_report in self.test_case_reports]))
+
+def get_failed_conditions(conditions):
+    if conditions is None:
+        return ""
+    return ", ".join([c.name for c in conditions if not c.nominal])
 
 
 def all_conditions_nominal(conditions):
@@ -122,9 +162,9 @@ class TestCase(object):
         """
         return [e.evaluate(c) for c, e in self.preconditions]
 
-    def verify_invariants(self, time):
+    def verify_invariants(self):
         """
-        Evaluates the invarians at time since starting
+        Evaluates the invarians since starting
         """
         return [e.evaluate(c) for c, e in self.invariants]
 
@@ -145,9 +185,11 @@ class TestCase(object):
         """
         print("Running test case {}".format(self.name))
 
-        if not all([tc.report.passed() if tc.ran else False for tc in self.depends_on]):
+        not_passed_dependencies = [tc for tc in self.depends_on if not tc.ran() or not tc.report.passed()]
+
+        if len(not_passed_dependencies) > 0:
             print("Dependencies have not been met, marking test case as failure")
-            self.finish([], [], [], False)
+            self.finish([], [], [], not_passed_dependencies)
             return self.report
 
         print("Verifying preconditions")
@@ -164,16 +206,19 @@ class TestCase(object):
                 self.finish(preconditions_evaluation, [], [])
                 return self.report
         print("Running the body of the test")
-        invariants = self.run()
+        self.run()
+        invariants_evaluation = self.verify_invariants()
         print("Verifying postconditions")
         postconditions_evaluation = self.verify_postconditions()
-        self.finish(preconditions_evaluation, invariants, postconditions_evaluation)
+        self.finish(preconditions_evaluation, invariants_evaluation, postconditions_evaluation)
         return self.report
 
-    def finish(self, preconditions_evaluation, invariants, postconditions_evaluation, dependencies_met=True):
+    def finish(self, preconditions_evaluation, invariants, postconditions_evaluation, not_passed_dependencies=None):
+        if not_passed_dependencies is None:
+            not_passed_dependencies = []
         self.ran = True
         self.report = TestCaseReport(self, preconditions_evaluation, invariants,
-                                     postconditions_evaluation, dependencies_met)
+                                     postconditions_evaluation, not_passed_dependencies)
         return self.report
 
     @abstractmethod
@@ -192,6 +237,12 @@ class Evaluation(object):
         self.measurement = measurement
         self.condition = condition
         self.nominal = nominal
+
+    def get_failure(self):
+        if self.nominal:
+            return None
+        else:
+            return self.condition.name
 
 
 class CompositeEvaluation(Evaluation):

@@ -14,7 +14,7 @@ class InCategoryConditionEvaluator(Evaluator):
 
     def evaluate(self, condition, measurement=None):
         if measurement is None:
-            measurement = self.sensor.sense()
+            measurement = self.call_evaluator()
         nominal = measurement.category in condition.categories
         return Evaluation(measurement, condition, nominal)
 
@@ -29,7 +29,7 @@ class CategorySensor(Sensor):
         Sensor.__init__(self)
 
     @abstractmethod
-    def sense(self):
+    def sense_internal(self):
         pass
 
 

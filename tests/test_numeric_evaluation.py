@@ -1,7 +1,7 @@
 """ Tests for numeric evaluators """
 
 import unittest
-
+import add_sut
 from rospit.numeric import NumericSensor, \
                            NumericMeasurement, \
                            LowerLimitCondition, \
@@ -27,7 +27,7 @@ class BelowLowerLimitNumericSensor(NumericSensor):
     """
     Senses a value that is below the lower limit
     """
-    def sense(self):
+    def sense_internal(self):
         return NumericMeasurement(BELOW_LOWER_LIMIT_VALUE)
 
 
@@ -35,7 +35,7 @@ class OnLowerLimitNumericSensor(NumericSensor):
     """
     Senses a value that is on the lower limit
     """
-    def sense(self):
+    def sense_internal(self):
         return NumericMeasurement(LOWER_LIMIT_VALUE)
 
 
@@ -43,7 +43,7 @@ class BetweenLowerLimitAndExpectedValueNumericSensor(NumericSensor):
     """
     Senses a value that is above the lower limit but below the expected value
     """
-    def sense(self):
+    def sense_internal(self):
         return NumericMeasurement(BETWEEN_LOWER_LIMIT_AND_EXPECTED_VALUE)
 
 
@@ -51,7 +51,7 @@ class ExpectedValueNumericSensor(NumericSensor):
     """
     Senses the expected value
     """
-    def sense(self):
+    def sense_internal(self):
         return NumericMeasurement(EXPECTED_VALUE)
 
 
@@ -59,7 +59,7 @@ class BetweenExpectedValueAndUpperLimitNumericSensor(NumericSensor):
     """
     Senses a value that is above the expected value but below the upper limit
     """
-    def sense(self):
+    def sense_internal(self):
         return NumericMeasurement(BETWEEN_EXPECTED_AND_UPPER_LIMIT_VALUE)
 
 
@@ -67,7 +67,7 @@ class OnUpperLimitNumericSensor(NumericSensor):
     """
     Senses a value that is on the upper limit
     """
-    def sense(self):
+    def sense_internal(self):
         return NumericMeasurement(UPPER_LIMIT_VALUE)
 
 
@@ -75,7 +75,7 @@ class AboveUpperLimitNumericSensor(NumericSensor):
     """
     Senses a value that is above the upper limit
     """
-    def sense(self):
+    def sense_internal(self):
         return NumericMeasurement(ABOVE_UPPER_LIMIT_VALUE)
 
 

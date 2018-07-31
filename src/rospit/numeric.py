@@ -97,7 +97,7 @@ class NumericSensor(Sensor):
         Sensor.__init__(self)
 
     @abstractmethod
-    def sense(self):
+    def sense_internal(self):
         pass
 
 
@@ -141,7 +141,7 @@ def try_get_limit(limit):
     if limit_type is float or limit_type is int:
         return (limit, True)
     elif limit_type is Limit:
-        return (lower_limit.limit, lower_limit.is_inclusive)
+        return (limit.limit, limit.is_inclusive)
     else:
         raise TypeError("limit needs to be either an instance of Limit, an int or a float")
 

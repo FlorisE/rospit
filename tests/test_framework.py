@@ -1,10 +1,13 @@
 """ Tests for the PIT framework """
 
 import unittest
-
+import add_sut
 from rospit.framework import TestSuite, \
                              TestCase, \
-                             TestCaseReport
+                             TestCaseReport, \
+                             Evaluation, \
+                             Measurement, \
+                             Condition
 
 
 class MockTestCase(TestCase):
@@ -17,11 +20,11 @@ class MockTestCase(TestCase):
         self.ran = False
         self.verify_preconditions_called = False
         self.verify_postconditions_called = False
-        self.verify_invariants_called_at_ts = []
+        self.verify_invariants_called = False
 
     def run(self):
         self.ran = True
-        return TestCaseReport(self, [], [], [])
+        return TestCaseReport(self, [], [], [], [])
 
     def verify_preconditions(self):
         self.verify_preconditions_called = True
@@ -31,9 +34,17 @@ class MockTestCase(TestCase):
         self.verify_postconditions_called = True
         return super(MockTestCase, self).verify_postconditions()
 
-    def verify_invariants(self, t):
-        self.verify_invariants_called_at_ts.append(t)
-        return self.verify_invariants(t)
+    def verify_invariants(self):
+        self.verify_invariants_called = True
+        return super(MockTestCase, self).verify_invariants()
+
+
+class TestCaseWithFailedPreconditions(TestCase):
+    def __init__(self):
+        TestCase.__init__(self, "Test case with failed preconditions")
+
+    def run(self):
+        return TestCaseReport(self, [Evaluation(Measurement(), Condition(False, "test condition"), False)], [], [], [])
 
 
 class TestTestSuite(unittest.TestCase):
@@ -65,6 +76,21 @@ class TestTestSuite(unittest.TestCase):
         self.test_suite.test_cases.append(test_case_two)
         report = self.test_suite.run()
         self.assertIsNotNone(report)
+
+    def test_get_junit_xml(self):
+        test_case_one = MockTestCase("Test case 1")
+        test_case_two = MockTestCase("Test case 2")
+        self.test_suite.test_cases.append(test_case_one)
+        self.test_suite.test_cases.append(test_case_two)
+        report = self.test_suite.run()
+        print(report.get_junit_xml())
+
+    def test_test_case_with_failed_preconditions(self):
+        test_case = TestCaseWithFailedPreconditions()
+        self.test_suite.test_cases.append(test_case)
+        report = self.test_suite.run()
+        print(report.get_junit_xml())
+
 
 
 class TestTestCase(unittest.TestCase):
