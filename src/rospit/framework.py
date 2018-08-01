@@ -4,6 +4,10 @@ from abc import ABCMeta, abstractmethod
 from collections import namedtuple
 from time import sleep
 import future  # noqa:401, pylint: disable=W0611
+from logging import getLogger
+
+
+logger = getLogger("rospit framework")
 
 
 class StatusMessages(object):
@@ -35,7 +39,7 @@ class Runner(object):
         test_suite_report = test_suite.run()
         for test_case_report in test_suite_report.test_case_reports:
             status_message = status_message_from_boolean(test_case_report.passed())
-            print("{}: {}".format(test_case_report.test_case.name, status_message))
+            logger.info("{}: {}".format(test_case_report.test_case.name, status_message))
 
     def run_all(self):
         """
@@ -58,7 +62,7 @@ class TestSuite(object):
         """
         Runs all the test cases in this test suite
         """
-        print("Running test suite {}".format(self.name))
+        logger.info("Running test suite {}".format(self.name))
         test_case_reports = [tc.execute() for tc in self.test_cases]
         return TestSuiteReport(self, test_case_reports)
 
@@ -87,9 +91,15 @@ class TestCaseReport(object):
     def get_failure(self):
         if self.passed:
             return ""
-        failed_conditions = ", ".join([get_failed_conditions(self.preconditions), get_failed_conditions(self.invariants), get_failed_conditions(self.postconditions)])
-        not_met_dependencies_string = ", ".join([tc.name if tc.name != "" else "UNKNOWN" for tc in self.not_passed_dependencies])
-        return '''<failure type="{}">{}</failure>'''.format(self.failure_type, ", ".join([failed_conditions, not_met_dependencies_string]))
+        if self.failure_type == "dependencies":
+            failure = ", ".join([tc.name if tc.name != "" else "UNKNOWN" for tc in self.not_passed_dependencies])
+        elif self.failure_type == "preconditions":
+            failure = get_failed_conditions(self.preconditions)
+        elif self.failure_type == "invariants":
+            failure = get_failed_conditions(self.invariants)
+        else:
+            failure = get_failed_conditions(self.postconditions)
+        return '''<failure type="{}">{}</failure>'''.format(self.failure_type, failure)
 
 
     def get_junit_xml(self):
@@ -100,7 +110,7 @@ class TestCaseReport(object):
             return '''\
 <testcase classname="{}" name="{}">
 {}
-</testcase>'''.format(self.test_case.name, self.test_case.name, self.failure_type)
+</testcase>'''.format(self.test_case.name, self.test_case.name, self.get_failure())
 
 
 
@@ -115,12 +125,12 @@ class TestSuiteReport(object):
 {}
 </testsuite>'''.format(self.test_suite.name if self.test_suite is not None else "UNKNOWN", \
                        len(self.test_case_reports), "\n".join(
-                           ["    " + test_case_report.get_junit_xml() for test_case_report in self.test_case_reports]))
+                           [test_case_report.get_junit_xml() for test_case_report in self.test_case_reports]))
 
 def get_failed_conditions(conditions):
     if conditions is None:
         return ""
-    return ", ".join([c.name for c in conditions if not c.nominal])
+    return ", ".join([c.condition.name for c in conditions if not c.nominal])
 
 
 def all_conditions_nominal(conditions):
@@ -183,32 +193,32 @@ class TestCase(object):
         """
         Verifies the preconditions, runs the test, verifies the postconditions
         """
-        print("Running test case {}".format(self.name))
+        logger.info("Running test case {}".format(self.name))
 
         not_passed_dependencies = [tc for tc in self.depends_on if not tc.ran() or not tc.report.passed()]
 
         if len(not_passed_dependencies) > 0:
-            print("Dependencies have not been met, marking test case as failure")
+            logger.info("Dependencies have not been met, marking test case as failure")
             self.finish([], [], [], not_passed_dependencies)
             return self.report
 
-        print("Verifying preconditions")
+        logger.info("Verifying preconditions")
         if self.wait_for_preconditions:
-            print("Wait for preconditions is enabled")
+            logger.info("Wait for preconditions is enabled")
             preconditions_evaluation = self.verify_preconditions()
             while not self.all_preconditions_nominal(preconditions_evaluation):
                 sleep(self.sleep_rate)
                 preconditions_evaluation = self.verify_preconditions()
         else:
-            print("Wait for preconditions is disabled")
+            logger.info("Wait for preconditions is disabled")
             preconditions_evaluation = self.verify_preconditions()
             if not self.all_preconditions_nominal(preconditions_evaluation):
                 self.finish(preconditions_evaluation, [], [])
                 return self.report
-        print("Running the body of the test")
+        logger.info("Running the body of the test")
         self.run()
         invariants_evaluation = self.verify_invariants()
-        print("Verifying postconditions")
+        logger.info("Verifying postconditions")
         postconditions_evaluation = self.verify_postconditions()
         self.finish(preconditions_evaluation, invariants_evaluation, postconditions_evaluation)
         return self.report

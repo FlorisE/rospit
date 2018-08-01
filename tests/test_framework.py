@@ -7,7 +7,8 @@ from rospit.framework import TestSuite, \
                              TestCaseReport, \
                              Evaluation, \
                              Measurement, \
-                             Condition
+                             Condition, \
+                             Evaluator
 
 
 class MockTestCase(TestCase):
@@ -44,7 +45,10 @@ class TestCaseWithFailedPreconditions(TestCase):
         TestCase.__init__(self, "Test case with failed preconditions")
 
     def run(self):
-        return TestCaseReport(self, [Evaluation(Measurement(), Condition(False, "test condition"), False)], [], [], [])
+        pass
+
+    def execute(self):
+        return TestCaseReport(self, [Evaluation(Measurement(), Condition(None, "Failed condition"), False)], [], [], [])
 
 
 class TestTestSuite(unittest.TestCase):
@@ -83,13 +87,22 @@ class TestTestSuite(unittest.TestCase):
         self.test_suite.test_cases.append(test_case_one)
         self.test_suite.test_cases.append(test_case_two)
         report = self.test_suite.run()
-        print(report.get_junit_xml())
+        self.assertEqual('''\
+<testsuite name="Testing" tests="2">
+<testcase classname="Test case 1" name="Test case 1" />
+<testcase classname="Test case 2" name="Test case 2" />
+</testsuite>''', report.get_junit_xml())
 
     def test_test_case_with_failed_preconditions(self):
         test_case = TestCaseWithFailedPreconditions()
         self.test_suite.test_cases.append(test_case)
         report = self.test_suite.run()
-        print(report.get_junit_xml())
+        self.assertEqual('''\
+<testsuite name="Testing" tests="1">
+<testcase classname="Test case with failed preconditions" name="Test case with failed preconditions">
+<failure type="preconditions">Failed condition</failure>
+</testcase>
+</testsuite>''', report.get_junit_xml())
 
 
 
