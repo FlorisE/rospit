@@ -11,6 +11,14 @@ from rospit.framework import TestSuite, \
                              Evaluator
 
 
+class LoggerMock(object):
+    def info(self, string):
+        pass
+
+    def debug(self, string):
+        pass
+
+
 class MockTestCase(TestCase):
     """
     Mock for test cases
@@ -22,10 +30,16 @@ class MockTestCase(TestCase):
         self.verify_preconditions_called = False
         self.verify_postconditions_called = False
         self.verify_invariants_called = False
+        self.set_up_called = False
+        self.tear_down_called = False
 
     def run(self):
         self.ran = True
         return TestCaseReport(self, [], [], [], [])
+
+    def set_up(self):
+        self.set_up_called = True
+        return super(MockTestCase, self).set_up()
 
     def verify_preconditions(self):
         self.verify_preconditions_called = True
@@ -39,6 +53,11 @@ class MockTestCase(TestCase):
         self.verify_invariants_called = True
         return super(MockTestCase, self).verify_invariants()
 
+    def tear_down(self):
+        self.tear_down_called = True
+        return super(MockTestCase, self).tear_down()
+
+
 
 class TestCaseWithFailedPreconditions(TestCase):
     def __init__(self):
@@ -47,8 +66,8 @@ class TestCaseWithFailedPreconditions(TestCase):
     def run(self):
         pass
 
-    def execute(self):
-        return TestCaseReport(self, [Evaluation(Measurement(), Condition(None, "Failed condition"), False)], [], [], [])
+    def execute(self, logger=None):
+        return TestCaseReport(self, [Evaluation(Measurement(0), Condition(None, "Failed condition"), False)], [], [], [])
 
 
 class TestTestSuite(unittest.TestCase):
@@ -57,6 +76,7 @@ class TestTestSuite(unittest.TestCase):
     """
     def setUp(self):
         self.test_suite = TestSuite("Testing")
+        self.logger = LoggerMock()
 
     def test_run_runs_all_test_cases(self):
         """
@@ -66,7 +86,7 @@ class TestTestSuite(unittest.TestCase):
         test_case_two = MockTestCase("Test case 2")
         self.test_suite.test_cases.append(test_case_one)
         self.test_suite.test_cases.append(test_case_two)
-        self.test_suite.run()
+        self.test_suite.run(self.logger)
         self.assertTrue(test_case_one.ran)
         self.assertTrue(test_case_two.ran)
 
@@ -78,7 +98,7 @@ class TestTestSuite(unittest.TestCase):
         test_case_two = MockTestCase("Test case 2")
         self.test_suite.test_cases.append(test_case_one)
         self.test_suite.test_cases.append(test_case_two)
-        report = self.test_suite.run()
+        report = self.test_suite.run(self.logger)
         self.assertIsNotNone(report)
 
     def test_get_junit_xml(self):
@@ -86,7 +106,7 @@ class TestTestSuite(unittest.TestCase):
         test_case_two = MockTestCase("Test case 2")
         self.test_suite.test_cases.append(test_case_one)
         self.test_suite.test_cases.append(test_case_two)
-        report = self.test_suite.run()
+        report = self.test_suite.run(self.logger)
         self.assertEqual('''\
 <testsuite name="Testing" tests="2">
 <testcase classname="Test case 1" name="Test case 1" />
@@ -96,7 +116,7 @@ class TestTestSuite(unittest.TestCase):
     def test_test_case_with_failed_preconditions(self):
         test_case = TestCaseWithFailedPreconditions()
         self.test_suite.test_cases.append(test_case)
-        report = self.test_suite.run()
+        report = self.test_suite.run(self.logger)
         self.assertEqual('''\
 <testsuite name="Testing" tests="1">
 <testcase classname="Test case with failed preconditions" name="Test case with failed preconditions">
@@ -112,15 +132,20 @@ class TestTestCase(unittest.TestCase):
     """
     def setUp(self):
         self.test_case = MockTestCase("Test case")
+        self.logger = LoggerMock()
 
     def test_execute_verifies_and_runs(self):
         """
         Executing the test case should:
-        1. Verify the preconditions
-        2. Call the run method
-        3. Verify the postconditions
+        1. Set up
+        2. Verify the preconditions
+        3. Call the run method
+        4. Verify the postconditions
+        5. Tear down
         """
-        self.test_case.execute()
+        self.test_case.execute(self.logger)
+        self.assertTrue(self.test_case.set_up_called)
         self.assertTrue(self.test_case.verify_preconditions_called)
         self.assertTrue(self.test_case.ran)
         self.assertTrue(self.test_case.verify_postconditions_called)
+        self.assertTrue(self.test_case.tear_down_called)

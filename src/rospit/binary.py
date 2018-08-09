@@ -36,6 +36,18 @@ class BinaryConditionEvaluator(Evaluator):
         return Evaluation(measurement, condition, nominal)
 
 
+class StaticBooleanEvaluator(Evaluator):
+    def __init__(self, always_true):
+        if always_true:
+            Evaluator.__init__(self, AlwaysTrueSensor())
+        else:
+            Evaluator.__init__(self, AlwaysFalseSensor())
+        self.always_true = always_true
+
+    def evaluate(self, condition, measurement=None):
+        return Evaluation(BinaryMeasurement(self.always_true), condition, True)
+
+
 class BinarySensor(Sensor):
     """
     Sensor that returns a binary value
@@ -48,6 +60,22 @@ class BinarySensor(Sensor):
     @abstractmethod
     def sense_internal(self):
         pass
+
+
+class AlwaysTrueSensor(BinarySensor):
+    def __init__(self):
+        BinarySensor.__init__(self)
+
+    def sense_internal(self):
+        return True
+
+
+class AlwaysFalseSensor(BinarySensor):
+    def __init__(self):
+        BinarySensor.__init__(self)
+
+    def sense_internal(self):
+        return False
 
 
 class BinaryMeasurement(Measurement):
@@ -65,5 +93,5 @@ class BinaryCondition(Condition):
     __metaclass__ = ABCMeta
 
     def __init__(self, value, name=""):
-        Condition.__init__(self, name)
+        Condition.__init__(self, value, name)
         self.value = value

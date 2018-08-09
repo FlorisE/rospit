@@ -2,12 +2,26 @@
 
 from abc import ABCMeta, abstractmethod
 from collections import namedtuple
-from time import sleep
+from time import sleep, strftime
 import future  # noqa:401, pylint: disable=W0611
-from logging import getLogger
+import logging
 
+class Active(object):
+    def __init__(self):
+        self.test_suite = None
+        self.test_case = None
+        self.logger = None
 
-logger = getLogger("rospit framework")
+active = Active()
+
+def get_active_test_suite():
+    return active.test_suite
+
+def get_active_test_case():
+    return active.test_case
+
+def get_logger():
+    return active.logger
 
 
 class StatusMessages(object):
@@ -22,24 +36,40 @@ def status_message_from_boolean(value):
         return StatusMessages.FAILED
 
 
+class XMLOutputSettings(object):
+    def __init__(self, export_path=None):
+        if export_path is None:
+            export_path = strftime("%Y%m%d%H%M%S.xml")
+        self.export_path = export_path
+
+
 class Runner(object):
     """
     Class for running test suites
     """
 
-    def __init__(self):
+    def __init__(self, logger=None, xml_output_settings=None):
+        if logger is None:
+            logger = logging.getLogger("rospit default logger")
+        self.logger = logger
+        active.logger = logger
         self.reports = []
         self.last_suite = None
+        self.xml_output_settings = xml_output_settings
 
     def run_suite(self, test_suite):
         """
         Runs the specified test_suite
         """
         self.last_suite = test_suite
-        test_suite_report = test_suite.run()
+        test_suite_report = test_suite.run(self.logger)
         for test_case_report in test_suite_report.test_case_reports:
-            status_message = status_message_from_boolean(test_case_report.passed())
-            logger.info("{}: {}".format(test_case_report.test_case.name, status_message))
+            status_message = status_message_from_boolean(test_case_report.passed)
+            self.logger.info("{}: {}".format(test_case_report.test_case.name, status_message))
+
+        if self.xml_output_settings is not None:
+            f = open(self.xml_output_settings.export_path, 'w') 
+            f.write(test_suite_report.get_junit_xml())
 
     def run_all(self):
         """
@@ -58,15 +88,25 @@ class TestSuite(object):
         self.name = name
         self.test_cases = []
 
-    def run(self):
+    def run(self, logger):
         """
         Runs all the test cases in this test suite
         """
+        active.test_suite = self
+        active.logger = logger
         logger.info("Running test suite {}".format(self.name))
-        test_case_reports = [tc.execute() for tc in self.test_cases]
+        test_case_reports = [tc.execute(logger) for tc in self.test_cases]
         return TestSuiteReport(self, test_case_reports)
 
 
+TEST_CASE_XML_SUCCESS = '''<testcase classname="{}" name="{}" />'''
+
+TEST_CASE_XML_FAILURE = '''\
+<testcase classname="{}" name="{}">
+{}
+</testcase>'''
+
+FAILURE = '''<failure type="{}">{}</failure>'''
 
 class TestCaseReport(object):
     def __init__(self, test_case, preconditions, invariants, postconditions, not_passed_dependencies):
@@ -99,19 +139,18 @@ class TestCaseReport(object):
             failure = get_failed_conditions(self.invariants)
         else:
             failure = get_failed_conditions(self.postconditions)
-        return '''<failure type="{}">{}</failure>'''.format(self.failure_type, failure)
-
+        return FAILURE.format(self.failure_type, failure)
 
     def get_junit_xml(self):
         if self.passed:
-            return '''\
-<testcase classname="{}" name="{}" />'''.format(self.test_case.name, self.test_case.name)
-        else:
-            return '''\
-<testcase classname="{}" name="{}">
-{}
-</testcase>'''.format(self.test_case.name, self.test_case.name, self.get_failure())
+            return TEST_CASE_XML_SUCCESS.format(self.test_case.name, self.test_case.name)
+        return TEST_CASE_XML_FAILURE.format(self.test_case.name, self.test_case.name, self.get_failure())
 
+
+TEST_SUITE_XML = '''\
+<testsuite name="{}" tests="{}">
+{}
+</testsuite>'''
 
 
 class TestSuiteReport(object):
@@ -119,13 +158,14 @@ class TestSuiteReport(object):
         self.test_suite = test_suite
         self.test_case_reports = test_case_reports
 
-    def get_junit_xml(self):
-        return '''\
-<testsuite name="{}" tests="{}">
-{}
-</testsuite>'''.format(self.test_suite.name if self.test_suite is not None else "UNKNOWN", \
-                       len(self.test_case_reports), "\n".join(
-                           [test_case_report.get_junit_xml() for test_case_report in self.test_case_reports]))
+    def get_junit_xml(self, logger=None):
+        result = TEST_SUITE_XML.format(self.test_suite.name if self.test_suite is not None else "UNKNOWN", \
+                                       len(self.test_case_reports), "\n".join(
+                                           [test_case_report.get_junit_xml() for test_case_report in self.test_case_reports]))
+        if logger is not None:
+            logger.debug(result)
+        return result
+
 
 def get_failed_conditions(conditions):
     if conditions is None:
@@ -166,6 +206,18 @@ class TestCase(object):
         self.report = None
         self.ran = False
 
+    def set_up(self):
+        """
+        Can be overriden to set up the test case
+        """
+        pass
+
+    def tear_down(self):
+        """
+        Can be overriden to tear down the test case
+        """
+        pass
+
     def verify_preconditions(self):
         """
         Evaluates all preconditions
@@ -189,39 +241,51 @@ class TestCase(object):
             preconditions = self.verify_preconditions()
         return all_conditions_nominal(preconditions)
 
-    def execute(self):
+    def execute(self, logger):
         """
         Verifies the preconditions, runs the test, verifies the postconditions
         """
-        logger.info("Running test case {}".format(self.name))
+        active.logger = logger
+        logger.info("Executing test case {}".format(self.name))
 
-        not_passed_dependencies = [tc for tc in self.depends_on if not tc.ran() or not tc.report.passed()]
+        for dependency in self.depends_on:
+            logger.info("Depends on: {}".format(dependency.name))
+
+        active.test_case = self
+
+        self.set_up()
+
+        not_passed_dependencies = [tc for tc in self.depends_on if not tc.ran or not tc.report.passed]
+
+        report = None
 
         if len(not_passed_dependencies) > 0:
             logger.info("Dependencies have not been met, marking test case as failure")
-            self.finish([], [], [], not_passed_dependencies)
-            return self.report
+            report = self.finish([], [], [], not_passed_dependencies)
 
-        logger.info("Verifying preconditions")
-        if self.wait_for_preconditions:
-            logger.info("Wait for preconditions is enabled")
-            preconditions_evaluation = self.verify_preconditions()
-            while not self.all_preconditions_nominal(preconditions_evaluation):
-                sleep(self.sleep_rate)
+        if report is None:
+            logger.info("Verifying preconditions")
+            if self.wait_for_preconditions:
+                logger.info("Wait for preconditions is enabled")
                 preconditions_evaluation = self.verify_preconditions()
-        else:
-            logger.info("Wait for preconditions is disabled")
-            preconditions_evaluation = self.verify_preconditions()
-            if not self.all_preconditions_nominal(preconditions_evaluation):
-                self.finish(preconditions_evaluation, [], [])
-                return self.report
-        logger.info("Running the body of the test")
-        self.run()
-        invariants_evaluation = self.verify_invariants()
-        logger.info("Verifying postconditions")
-        postconditions_evaluation = self.verify_postconditions()
-        self.finish(preconditions_evaluation, invariants_evaluation, postconditions_evaluation)
-        return self.report
+                while not self.all_preconditions_nominal(preconditions_evaluation):
+                    sleep(self.sleep_rate)
+                    preconditions_evaluation = self.verify_preconditions()
+            else:
+                logger.info("Wait for preconditions is disabled")
+                preconditions_evaluation = self.verify_preconditions()
+                if not self.all_preconditions_nominal(preconditions_evaluation):
+                    report = self.finish(preconditions_evaluation, [], [])
+
+        if report is None:
+            logger.info("Running the body of the test")
+            self.run()
+            invariants_evaluation = self.verify_invariants()
+            logger.info("Verifying postconditions")
+            postconditions_evaluation = self.verify_postconditions()
+            report = self.finish(preconditions_evaluation, invariants_evaluation, postconditions_evaluation)
+
+        return report
 
     def finish(self, preconditions_evaluation, invariants, postconditions_evaluation, not_passed_dependencies=None):
         if not_passed_dependencies is None:
@@ -229,6 +293,7 @@ class TestCase(object):
         self.ran = True
         self.report = TestCaseReport(self, preconditions_evaluation, invariants,
                                      postconditions_evaluation, not_passed_dependencies)
+        self.tear_down()
         return self.report
 
     @abstractmethod
@@ -283,6 +348,17 @@ class ConditionEvaluatorPair(object):
         self.condition = condition
         self.evaluator = evaluator
 
+    def keys(self):
+        return [0, 1]
+
+    def __getitem__(self, i):
+        if i == 0:
+            return self.condition
+        elif i == 1:
+            return self.evaluator
+        else:
+            raise IndexError("Key not supported, use 0 (for condition) or 1 (for evaluator)")
+
 
 class Condition(object):
     """
@@ -293,6 +369,9 @@ class Condition(object):
     def __init__(self, value, name=""):
         self.value = value
         self.name = name
+
+    def __repr__(self):
+        return "{}({})".format(self.__class__.__name__ if self.name == "" else self.name, self.value)
 
 
 class Evaluator(object):
@@ -324,7 +403,8 @@ class Measurement(object):
     """
     Contains a measurement
     """
-    __metaclass__ = ABCMeta
+    def __init__(self, value):
+        self.value = value
 
 
 class Sensor(object):

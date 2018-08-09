@@ -5,17 +5,22 @@ from collections import namedtuple
 import future  # noqa:401, pylint: disable=W0611
 
 from rospit.framework import Evaluator, Evaluation, CompositeEvaluation, Sensor, \
-                             Measurement, Condition
+                             Measurement, Condition, get_active_test_suite, get_active_test_case
 
 
 def numeric_measure(evaluator):
     measurement = evaluator.call_evaluator()
+    return measurement_wrapper(measurement)
+
+
+def measurement_wrapper(measurement):
     if isinstance(measurement, int) or isinstance(measurement, float):
         return NumericMeasurement(measurement)
     elif isinstance(measurement, NumericMeasurement):
         return measurement
     else:
-        raise TypeError("measurement should either be a float, an int or a NumericMeasurement")
+        raise TypeError("measurement should either be a float, an int or a NumericMeasurement, but got: {}".format(None if measurement is None else measurement.__class__.__name__))
+
 
 class LowerLimitEvaluator(Evaluator):
     """
@@ -30,6 +35,8 @@ class LowerLimitEvaluator(Evaluator):
         """
         if measurement is None:
             measurement = numeric_measure(self)
+        else:
+            measurement = measurement_wrapper(measurement)
 
         if condition.lower_limit_is_inclusive:
             nominal = measurement.value >= condition.lower_limit
@@ -52,6 +59,8 @@ class UpperLimitEvaluator(Evaluator):
         """
         if measurement is None:
             measurement = numeric_measure(self)
+        else:
+            measurement = measurement_wrapper(measurement)
 
         if condition.upper_limit_is_inclusive:
             nominal = measurement.value <= condition.upper_limit
@@ -76,6 +85,8 @@ class BothLimitsEvaluator(LowerLimitEvaluator, UpperLimitEvaluator):
         """
         if measurement is None:
             measurement = numeric_measure(self)
+        else:
+            measurement = measurement_wrapper(measurement)
 
         lower_limit_eval = LowerLimitEvaluator.evaluate(
             self, condition, measurement)
@@ -86,6 +97,83 @@ class BothLimitsEvaluator(LowerLimitEvaluator, UpperLimitEvaluator):
             measurement, condition,
             [lower_limit_eval, upper_limit_eval])
 
+
+class GreaterThanEvaluator(Evaluator):
+    def __init__(self, evaluator):
+        Evaluator.__init__(self, evaluator)
+
+    def evaluate(self, condition, measurement=None):
+        if measurement is None:
+            measurement = numeric_measure(self)
+        else:
+            measurement = measurement_wrapper(measurement)
+
+        return Evaluation(measurement, condition, measurement.value > condition.value)
+
+
+class GreaterThanOrEqualToEvaluator(Evaluator):
+    def __init__(self, evaluator):
+        Evaluator.__init__(self, evaluator)
+
+    def evaluate(self, condition, measurement=None):
+        if measurement is None:
+            measurement = numeric_measure(self)
+        else:
+            measurement = measurement_wrapper(measurement)
+
+        return Evaluation(measurement, condition, measurement.value >= condition.value)
+
+
+class EqualToEvaluator(Evaluator):
+    def __init__(self, evaluator):
+        Evaluator.__init__(self, evaluator)
+
+    def evaluate(self, condition, measurement=None):
+        if measurement is None:
+            measurement = numeric_measure(self)
+        else:
+            measurement = measurement_wrapper(measurement)
+
+        return Evaluation(measurement, condition, measurement.value == condition.value)
+
+
+class NotEqualToEvaluator(Evaluator):
+    def __init__(self, evaluator):
+        Evaluator.__init__(self, evaluator)
+
+    def evaluate(self, condition, measurement=None):
+        if measurement is None:
+            measurement = numeric_measure(self)
+        else:
+            measurement = measurement_wrapper(measurement)
+
+        return Evaluation(measurement, condition, measurement.value != condition.value)
+
+
+class LessThanOrEqualToEvaluator(Evaluator):
+    def __init__(self, evaluator):
+        Evaluator.__init__(self, evaluator)
+
+    def evaluate(self, condition, measurement=None):
+        if measurement is None:
+            measurement = numeric_measure(self)
+        else:
+            measurement = measurement_wrapper(measurement)
+
+        return Evaluation(measurement, condition, measurement.value <= condition.value)
+
+
+class LessThanEvaluator(Evaluator):
+    def __init__(self, evaluator):
+        Evaluator.__init__(self, evaluator)
+
+    def evaluate(self, condition, measurement=None):
+        if measurement is None:
+            measurement = numeric_measure(self)
+        else:
+            measurement = measurement_wrapper(measurement)
+
+        return Evaluation(measurement, condition, measurement.value < condition.value)
 
 class NumericSensor(Sensor):
     """
@@ -107,6 +195,9 @@ class NumericMeasurement(Measurement):
     """
     def __init__(self, value):
         self.value = value
+
+    def __repr__(self):
+        return "NumericMeasurement({})".format(self.value)
 
 
 Limit = namedtuple("Limit", "limit is_inclusive")
@@ -145,6 +236,7 @@ def try_get_limit(limit):
     else:
         raise TypeError("limit needs to be either an instance of Limit, an int or a float")
 
+
 class LowerLimitCondition(Condition):
     """
     A condition for a numeric function with just a lower limit
@@ -153,8 +245,12 @@ class LowerLimitCondition(Condition):
 
     def __init__(
             self, lower_limit, name=""):
-        Condition.__init__(self, name)
+        Condition.__init__(self, lower_limit, name)
         self.lower_limit, self.lower_limit_is_inclusive = try_get_limit(lower_limit)
+        self.evaluator_type = LowerLimitEvaluator
+
+    def __repr__(self):
+        return "{} lower limit at {}".format("inclusive" if self.lower_limit_is_inclusive else "exclusive", self.lower_limit) 
 
 
 class UpperLimitCondition(Condition):
@@ -165,8 +261,11 @@ class UpperLimitCondition(Condition):
 
     def __init__(
             self, upper_limit, name=""):
-        Condition.__init__(self, name)
+        Condition.__init__(self, upper_limit, name)
         self.upper_limit, self.upper_limit_is_inclusive = try_get_limit(upper_limit)
+
+    def __repr__(self):
+        return "{} upper limit at {}".format("inclusive" if self.upper_limit_is_inclusive else "exclusive", self.upper_limit) 
 
 
 class BothLimitsCondition(LowerLimitCondition, UpperLimitCondition):
@@ -179,3 +278,83 @@ class BothLimitsCondition(LowerLimitCondition, UpperLimitCondition):
             self, lower_limit, upper_limit, name=""):
         LowerLimitCondition.__init__(self, lower_limit, name)
         UpperLimitCondition.__init__(self, upper_limit, name)
+
+    def __repr__(self):
+        return "{} {} lower limit: {}, {} upper_limit: {})".format(\
+                "Both limits" if self.name == "" else self.name, \
+                "inclusive" if self.lower_limit_is_inclusive else "exclusive", self.lower_limit, \
+                "inclusive" if self.upper_limit_is_inclusive else "exclusive", self.upper_limit)
+
+
+class GreaterThanCondition(Condition):
+    """
+    A condition for a numeric value that should be greater than some value
+    """
+    def __init__(self, value, name=""):
+        Condition.__init__(self, value, name)
+        self.greater_than = value
+
+    def __repr__(self):
+        return "greater than {}".format(self.greater_than)
+
+
+class GreaterThanOrEqualToCondition(Condition):
+    """
+    A condition for a numeric value that should be greater than or equal
+    to some value
+    """
+    def __init__(self, value, name=""):
+        Condition.__init__(self, value, name)
+        self.greater_than_or_equal_to = value
+
+    def __repr__(self):
+        return "greater than or equal to {}".format(self.greater_than_or_equal_to)
+
+
+class EqualToCondition(Condition):
+    """
+    A condition for a numeric value that should be equal to some value
+    """
+    def __init__(self, value, name=""):
+        Condition.__init__(self, value, name)
+        self.equal_to = value
+
+    def __repr__(self):
+        return "equal to {}".format(self.equal_to)
+
+
+class NotEqualToCondition(Condition):
+    """
+    A condition for a numeric value that should not be equal to some value
+    """
+    def __init__(self, value, name=""):
+        Condition.__init__(self, value, name)
+        self.not_equal_to = value
+
+    def __repr__(self):
+        return "not equal to {}".format(self.not_equal_to)
+
+
+class LessThanOrEqualToCondition(Condition):
+    """
+    A condition for a numeric value that should be less than or equal
+    to some value
+    """
+    def __init__(self, value, name=""):
+        Condition.__init__(self, value, name)
+        self.less_than_or_equal_to = value
+
+    def __repr__(self):
+        return "less than or equal to {}".format(self.less_than_or_equal_to)
+
+
+class LessThanCondition(Condition):
+    """
+    A condition for a numeric value that should be less than some value
+    """
+    def __init__(self, value, name=""):
+        Condition.__init__(self, value, name)
+        self.less_than = value
+
+    def __repr__(self):
+        return "less than {}".format(self.less_than)
