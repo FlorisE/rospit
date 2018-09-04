@@ -1,6 +1,5 @@
 from lxml import etree
 
-import rospy
 from rospit.framework import TestSuite, ConditionEvaluatorPair
 from rospit.binary import BinaryCondition, BinaryConditionEvaluator, StaticBooleanEvaluator
 from rospit.numeric import Limit, LowerLimitCondition, LowerLimitEvaluator, \
@@ -128,7 +127,6 @@ class SubscriberFactory(object):
 
 class Parser(object):
     def __init__(self, root):
-        rospy.init_node("parser", anonymous=True)
         self.root = root
         self.subs = SubscriberFactory(root)
         self.test_suite = None
@@ -168,7 +166,6 @@ class Parser(object):
             else:
                 raise Exception("Unexpected child")
         return test_case
-
 
     def get_condition_from_xml_element(self, element):
         for child in element.getchildren():

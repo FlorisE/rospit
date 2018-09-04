@@ -1,4 +1,4 @@
-from rospit.framework import Evaluator, Evaluation, TestSuite, get_logger
+from rospit.framework import Evaluator, Evaluation, TestSuite, get_logger, Measurement
 from rospit.declarative import Step
 from rospit.binary import BinaryMeasurement
 from rospit.numeric import Limit, LowerLimitCondition, LowerLimitEvaluator, \
@@ -127,9 +127,9 @@ class ExecutionReturnedEvaluator(Evaluator):
                 fields = self.field.split("/")
                 for field in fields:
                     current = getattr(current, field)
-            measurement = current
+            measurement = Measurement(current)
 
-        evaluation = Evaluation(measurement, condition, measurement == condition.value)
+        evaluation = Evaluation(measurement, condition, measurement.value == condition.value)
         get_logger().debug("Condition {}, measurement {}, {}".format(condition, measurement, "nominal" if evaluation.nominal else "not nominal"))
         return evaluation
 
