@@ -1,6 +1,5 @@
 """ Tests for binary evaluators """
 import unittest
-import add_sut
 from rospit.binary import BinaryCondition, \
                           BinarySensor, \
                           BinaryMeasurement, \

@@ -1,7 +1,6 @@
 """ Tests for in category evaluators """
 
 import unittest
-import add_sut
 from rospit.category import InCategoriesCondition, \
                             CategorySensor, \
                             CategoryMeasurement, \

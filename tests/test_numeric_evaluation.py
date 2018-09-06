@@ -1,7 +1,6 @@
 """ Tests for numeric evaluators """
 
 import unittest
-import add_sut
 from rospit.numeric import NumericSensor, \
                            NumericMeasurement, \
                            LowerLimitCondition, \

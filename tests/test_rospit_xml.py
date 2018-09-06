@@ -1,6 +1,5 @@
 import unittest
-import add_sut
-from rospit.rospit_xml import get_test_suite_from_xml_string
+import rospit.rospit_xml
 from rospit.framework import Condition, Evaluator
 from rospit.binary import BinaryCondition, StaticBooleanEvaluator
 from rospit.declarative import DummyStep
@@ -39,18 +38,19 @@ test_xml = '''\
 
 incorrect_xml = ""
 
+
 class TestLoadTestSuite(unittest.TestCase):
     def test_parse_correct_xml_does_not_throw(self):
-        test_suite = get_test_suite_from_xml_string(test_xml)
+        rospit.rospit_xml.get_test_suite_from_xml_string(test_xml)
 
     def test_parse_incorrect_xml_throws(self):
         with self.assertRaises(XMLSyntaxError):
-            get_test_suite_from_xml_string(incorrect_xml)
+            rospit.rospit_xml.get_test_suite_from_xml_string(incorrect_xml)
 
 
 class TestParseTestSuite(unittest.TestCase):
     def setUp(self):
-        parser = get_test_suite_from_xml_string(test_xml)
+        parser = rospit.rospit_xml.get_test_suite_from_xml_string(test_xml)
         parser.parse()
         self.test_suite = parser.test_suite
 
@@ -63,7 +63,7 @@ class TestParseTestSuite(unittest.TestCase):
 
 class TestParseFirstTestCase(unittest.TestCase):
     def setUp(self):
-        parser = get_test_suite_from_xml_string(test_xml)
+        parser = rospit.rospit_xml.get_test_suite_from_xml_string(test_xml)
         parser.parse()
         self.test_suite = parser.test_suite
         self.first_test_case = self.test_suite.test_cases[0]
@@ -106,7 +106,7 @@ class TestParseFirstTestCase(unittest.TestCase):
 
 class TestParseSecondTestCase(unittest.TestCase):
     def setUp(self):
-        parser = get_test_suite_from_xml_string(test_xml)
+        parser = rospit.rospit_xml.get_test_suite_from_xml_string(test_xml)
         parser.parse()
         self.test_suite = parser.test_suite
         self.second_test_case = self.test_suite.test_cases[1]

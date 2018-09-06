@@ -96,9 +96,9 @@ catkin_python_setup()
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES rospit
-#  CATKIN_DEPENDS other_catkin_pkg
+# INCLUDE_DIRS include
+  LIBRARIES rospit
+  CATKIN_DEPENDS rospit_msgs
 #  DEPENDS system_lib
 )
 
@@ -178,4 +178,4 @@ catkin_package(
 # endif()
 
 ## Add folders to be run by python nosetests
-# catkin_add_nosetests(test)
+catkin_add_nosetests(tests)

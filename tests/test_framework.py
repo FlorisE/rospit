@@ -1,7 +1,6 @@
 """ Tests for the PIT framework """
 
 import unittest
-# import add_sut
 from rospit.framework import TestSuite, \
                              TestCase, \
                              TestCaseReport, \
