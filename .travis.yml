@@ -6,7 +6,9 @@ services:
   - docker
 before_install:
   - docker pull ros:melodic
-  - docker run -d ros:melodic /bin/sh "source /opt/ros/melodic/setup.bash"
+  - docker run -it ros:melodic /bin/bash
+  - source /opt/ros/kinetic/setup.bash
+  - exit
 install:
   - pip install -r requirements.txt
 script: ./run_tests.sh
