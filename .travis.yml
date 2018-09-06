@@ -4,12 +4,12 @@ python:
 - "2.7"
 services:
   - docker
-script: ./run_tests.sh
 before_install:
   - docker pull ros:melodic
-  - docker run ros:melodic /bin/sh "source /opt/ros/melodic/setup.bash"
+  - docker run -d ros:melodic /bin/sh "source /opt/ros/melodic/setup.bash"
 install:
   - pip install -r requirements.txt
+script: ./run_tests.sh
 notifications:
   email:
     on_success: never
