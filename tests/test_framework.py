@@ -1,14 +1,13 @@
 """ Tests for the PIT framework """
 
 import unittest
-import add_sut
+# import add_sut
 from rospit.framework import TestSuite, \
                              TestCase, \
                              TestCaseReport, \
                              Evaluation, \
                              Measurement, \
-                             Condition, \
-                             Evaluator
+                             Condition
 
 
 class LoggerMock(object):
@@ -58,7 +57,6 @@ class MockTestCase(TestCase):
         return super(MockTestCase, self).tear_down()
 
 
-
 class TestCaseWithFailedPreconditions(TestCase):
     def __init__(self):
         TestCase.__init__(self, "Test case with failed preconditions")
@@ -67,7 +65,10 @@ class TestCaseWithFailedPreconditions(TestCase):
         pass
 
     def execute(self, logger=None):
-        return TestCaseReport(self, [Evaluation(Measurement(0), Condition(None, "Failed condition"), False)], [], [], [])
+        return TestCaseReport(
+            self,
+            [Evaluation(Measurement(0), Condition(None, "Failed condition"), False)],
+            [], [], [])
 
 
 class TestTestSuite(unittest.TestCase):
@@ -123,7 +124,6 @@ class TestTestSuite(unittest.TestCase):
 <failure type="preconditions">Failed condition</failure>
 </testcase>
 </testsuite>''', report.get_junit_xml())
-
 
 
 class TestTestCase(unittest.TestCase):

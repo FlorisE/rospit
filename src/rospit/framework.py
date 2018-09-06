@@ -23,6 +23,8 @@ test_runner_state = TestRunnerState()
 def get_active_test_suite():
     """
     Returns the test suite that was last ran
+    >>> get_active_test_suite()
+    "Hello"
     """
     return test_runner_state.test_suite
 
@@ -390,9 +392,11 @@ class Evaluation(object):
     """
     def __init__(self, measurement, condition, nominal):
         if not isinstance(measurement, Measurement):
-            raise ValueError("measurement is not of the right type, got: " + measurement.__class__.__name__)
+            raise ValueError(
+                "measurement is not of the right type, got: " + measurement.__class__.__name__)
         if not isinstance(condition, Condition):
-            raise ValueError("condition is not of the right type, got: " + condition.__class__.__name__)
+            raise ValueError(
+                "condition is not of the right type, got: " + condition.__class__.__name__)
         self.measurement = measurement
         self.condition = condition
         self.nominal = nominal
@@ -403,11 +407,14 @@ class Evaluation(object):
         """
         if self.nominal:
             return None
-        else:
-            return self.condition.name
+        return self.condition.name
 
-    def expected_actual_string(self):
-        return "{}, {}".format(self.condition.value, self.measurement.value)
+    def expected_actual_string(self, separator=", "):
+        """
+        Returns a string containing the expected value and the actual value,
+        seperated by the specified separator
+        """
+        return str(self.condition.value) + separator + str(self.measurement.value)
 
 
 class CompositeEvaluation(Evaluation):
