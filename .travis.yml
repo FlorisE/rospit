@@ -1,7 +1,13 @@
+sudo: required
 language: python
 python:
 - "2.7"
+services:
+  - docker
 script: ./run_tests.sh
+before_install:
+  - docker pull ros/melodic-ros-base
+  - docker run ros/melodic-ros-base /bin/sh "source /opt/ros/melodic/setup.bash"
 install:
   - pip install -r requirements.txt
 notifications:
