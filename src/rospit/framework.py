@@ -2,13 +2,14 @@
 
 from abc import ABCMeta, abstractmethod
 from time import sleep, strftime
-import future  # noqa:401, pylint: disable=W0611
 import logging
+import future  # noqa:401, pylint: disable=W0611
 
 
-class TestRunnerState(object):
+class _TestRunnerState(object):
     """
     Class to hold the current state of the test runner
+    Grouped in a class instead of being globals as they are not static
     """
 
     def __init__(self):
@@ -17,7 +18,7 @@ class TestRunnerState(object):
         self.logger = None
 
 
-test_runner_state = TestRunnerState()
+TEST_RUNNER_STATE = _TestRunnerState()
 
 
 def get_active_test_suite():
@@ -26,29 +27,25 @@ def get_active_test_suite():
     >>> get_active_test_suite()
     "Hello"
     """
-    return test_runner_state.test_suite
+    return TEST_RUNNER_STATE.test_suite
 
 
 def get_active_test_case():
     """
     Returns the test case that was last ran
     """
-    return test_runner_state.test_case
+    return TEST_RUNNER_STATE.test_case
 
 
 def get_logger():
     """
     Returns the logger that was passed to the test runner
     """
-    return test_runner_state.logger
+    return TEST_RUNNER_STATE.logger
 
 
-class StatusMessages(object):
-    """
-    Collection of status messages with color codings
-    """
-    PASSED = '\033[92m' + "PASSED" + '\033[0m'
-    FAILED = '\033[91m' + "FAILED" + '\033[0m'
+STATUS_MESSAGE_PASSED = '\033[92m' + "PASSED" + '\033[0m'
+STATUS_MESSAGE_FAILED = '\033[91m' + "FAILED" + '\033[0m'
 
 
 def status_message_from_boolean(value):
@@ -56,18 +53,8 @@ def status_message_from_boolean(value):
     From a boolean value, return the status message
     """
     if value:
-        return StatusMessages.PASSED
-    return StatusMessages.FAILED
-
-
-class XMLOutputSettings(object):
-    """
-    Contains settings for outputting an XML test report
-    """
-    def __init__(self, export_path=None):
-        if export_path is None:
-            export_path = strftime("%Y%m%d%H%M%S.xml")
-        self.export_path = export_path
+        return STATUS_MESSAGE_PASSED
+    return STATUS_MESSAGE_FAILED
 
 
 class Runner(object):
@@ -79,7 +66,7 @@ class Runner(object):
         if logger is None:
             logger = logging.getLogger("rospit default logger")
         self.logger = logger
-        test_runner_state.logger = logger
+        TEST_RUNNER_STATE.logger = logger
         self.reports = []
         self.last_suite = None
         self.xml_output_settings = xml_output_settings
@@ -92,12 +79,11 @@ class Runner(object):
         test_suite_report = test_suite.run(self.logger)
         for test_case_report in test_suite_report.test_case_reports:
             status_msg = status_message_from_boolean(test_case_report.passed)
-            self.logger.info("{}: {}".format(
-                test_case_report.test_case.name, status_msg))
+            self.logger.info("%s: %s", test_case_report.test_case.name, status_msg)
 
         if self.xml_output_settings is not None:
-            f = open(self.xml_output_settings.export_path, 'w')
-            f.write(test_suite_report.get_junit_xml())
+            xml_results_file = open(self.xml_output_settings.export_path, 'w')
+            xml_results_file.write(test_suite_report.get_junit_xml())
 
     def run_all(self):
         """
@@ -120,11 +106,177 @@ class TestSuite(object):
         """
         Runs all the test cases in this test suite
         """
-        test_runner_state.test_suite = self
-        test_runner_state.logger = logger
+        TEST_RUNNER_STATE.test_suite = self
+        TEST_RUNNER_STATE.logger = logger
         logger.info("Running test suite {}".format(self.name))
         test_case_reports = [tc.execute(logger) for tc in self.test_cases]
         return TestSuiteReport(self, test_case_reports)
+
+
+def get_failed_conditions(conditions):
+    """
+    Gets a comma separated string for the conditions that failed
+    """
+    if conditions is None:
+        return ""
+    return ", ".join([c.condition.name for c in conditions if not c.nominal])
+
+
+def all_conditions_nominal(conditions):
+    """
+    Checks whether all conditions are nominal
+    If no conditions are specified, assume nominal
+    """
+    if not conditions:
+        return True
+    return all([c.nominal for c in conditions])
+
+
+class TestCase(object):
+    """
+    Specifies a test case with preconditions, invariants and postconditions
+    """
+    __metaclass__ = ABCMeta
+
+    def __init__(self, name="", preconditions=None, invariants=None,
+                 postconditions=None, wait_for_preconditions=False,
+                 sleep_rate=0.1, depends_on=None):
+        self.name = name
+        if preconditions is None:
+            preconditions = []
+        if invariants is None:
+            invariants = []
+        if postconditions is None:
+            postconditions = []
+        if depends_on is None:
+            depends_on = []
+        self.preconditions = preconditions
+        self.invariants = invariants
+        self.invariants_evaluation = []
+        self.postconditions = postconditions
+        self.wait_for_preconditions = wait_for_preconditions
+        self.sleep_rate = sleep_rate
+        self.depends_on = depends_on
+        self.report = None
+        self.ran = False
+
+    def set_up(self):
+        """
+        Can be overriden to set up the test case
+        """
+        pass
+
+    def tear_down(self):
+        """
+        Can be overriden to tear down the test case
+        """
+        pass
+
+    def verify_preconditions(self):
+        """
+        Evaluates all preconditions
+        """
+        return [e.evaluate(c) for c, e in self.preconditions]
+
+    def verify_postconditions(self):
+        """
+        Evaluates all postconditions
+        """
+        return [e.evaluate(c) for c, e in self.postconditions]
+
+    def all_preconditions_nominal(self, preconditions=None):
+        """
+        Checks whether all conditions of the test case are nominal
+        """
+        if preconditions is None:
+            preconditions = self.verify_preconditions()
+        return all_conditions_nominal(preconditions)
+
+    def execute(self, logger):
+        """
+        Verifies the preconditions, runs the test, verifies the postconditions
+        """
+        TEST_RUNNER_STATE.logger = logger
+        logger.info("Executing test case {}".format(self.name))
+
+        for dependency in self.depends_on:
+            logger.info("Depends on: {}".format(dependency.name))
+
+        TEST_RUNNER_STATE.test_case = self
+
+        self.set_up()
+
+        not_passed_dependencies = [
+            tc for tc in self.depends_on if not tc.ran or not tc.report.passed]
+
+        report = None
+
+        if not_passed_dependencies:
+            logger.info(
+                "Dependencies have not been met, marking test case as failure")
+            report = self.finish([], [], not_passed_dependencies)
+
+        if report is None:
+            logger.info("Verifying preconditions")
+            if self.wait_for_preconditions:
+                logger.info("Wait for preconditions is enabled")
+                preconditions_eval = self.verify_preconditions()
+                while not self.all_preconditions_nominal(preconditions_eval):
+                    sleep(self.sleep_rate)
+                    preconditions_eval = self.verify_preconditions()
+            else:
+                logger.info("Wait for preconditions is disabled")
+                preconditions_eval = self.verify_preconditions()
+                if not self.all_preconditions_nominal(preconditions_eval):
+                    report = self.finish(preconditions_eval, [], [])
+
+        if report is None:
+            logger.info("Running the body of the test")
+            self.start_invariant_monitoring()
+            self.run()
+            self.stop_invariant_monitoring()
+            logger.info("Verifying postconditions")
+            postconditions_eval = self.verify_postconditions()
+            report = self.finish(
+                preconditions_eval, postconditions_eval)
+
+        return report
+
+    def finish(self, preconditions_evaluation, postconditions_evaluation,
+               not_passed_dependencies=None):
+        """
+        Finish executing the test case
+        """
+        if not_passed_dependencies is None:
+            not_passed_dependencies = []
+        self.ran = True
+        self.report = TestCaseReport(
+            self, preconditions_evaluation, self.invariants_evaluation,
+            postconditions_evaluation, not_passed_dependencies)
+        self.tear_down()
+        return self.report
+
+    def start_invariant_monitoring(self):
+        """
+        Start invariant monitoring, should append results to self.invariants_evaluation
+        Should be non-blocking, e.g. implemented as a thread for process
+        This should be overridden by a class that wants to use invariants
+        """
+        pass
+
+    def stop_invariant_monitoring(self):
+        """
+        Stops invariant monitoring, by for example stopping the thread / process
+        This should be overridden by a class that wants to use invariants
+        """
+        pass
+
+    @abstractmethod
+    def run(self):
+        """
+        Runs the test
+        """
+        pass
 
 
 TEST_CASE_XML_SUCCESS = '''<testcase classname="{}" name="{}" />'''
@@ -231,159 +383,14 @@ class TestSuiteReport(object):
         return result
 
 
-def get_failed_conditions(conditions):
+class XMLOutputSettings(object):
     """
-    Gets a comma separated string for the conditions that failed
+    Contains settings for outputting an XML test report
     """
-    if conditions is None:
-        return ""
-    return ", ".join([c.condition.name for c in conditions if not c.nominal])
-
-
-def all_conditions_nominal(conditions):
-    """
-    Checks whether all conditions are nominal
-    If no conditions are specified, assume nominal
-    """
-    if not conditions:
-        return True
-    return all([c.nominal for c in conditions])
-
-
-class TestCase(object):
-    """
-    Specifies a test case with preconditions, invariants and postconditions
-    """
-    __metaclass__ = ABCMeta
-
-    def __init__(self, name="", preconditions=None, invariants=None,
-                 postconditions=None, wait_for_preconditions=False,
-                 sleep_rate=0.1, depends_on=None):
-        self.name = name
-        if preconditions is None:
-            preconditions = []
-        if invariants is None:
-            invariants = []
-        if postconditions is None:
-            postconditions = []
-        if depends_on is None:
-            depends_on = []
-        self.preconditions = preconditions
-        self.invariants = invariants
-        self.postconditions = postconditions
-        self.wait_for_preconditions = wait_for_preconditions
-        self.sleep_rate = sleep_rate
-        self.depends_on = depends_on
-        self.report = None
-        self.ran = False
-
-    def set_up(self):
-        """
-        Can be overriden to set up the test case
-        """
-        pass
-
-    def tear_down(self):
-        """
-        Can be overriden to tear down the test case
-        """
-        pass
-
-    def verify_preconditions(self):
-        """
-        Evaluates all preconditions
-        """
-        return [e.evaluate(c) for c, e in self.preconditions]
-
-    def verify_invariants(self):
-        """
-        Evaluates the invarians since starting
-        """
-        return [e.evaluate(c) for c, e in self.invariants]
-
-    def verify_postconditions(self):
-        """
-        Evaluates all postconditions
-        """
-        return [e.evaluate(c) for c, e in self.postconditions]
-
-    def all_preconditions_nominal(self, preconditions=None):
-        """
-        Checks whether all conditions of the test case are nominal
-        """
-        if preconditions is None:
-            preconditions = self.verify_preconditions()
-        return all_conditions_nominal(preconditions)
-
-    def execute(self, logger):
-        """
-        Verifies the preconditions, runs the test, verifies the postconditions
-        """
-        test_runner_state.logger = logger
-        logger.info("Executing test case {}".format(self.name))
-
-        for dependency in self.depends_on:
-            logger.info("Depends on: {}".format(dependency.name))
-
-        test_runner_state.test_case = self
-
-        self.set_up()
-
-        not_passed_dependencies = [
-            tc for tc in self.depends_on if not tc.ran or not tc.report.passed]
-
-        report = None
-
-        if not_passed_dependencies:
-            logger.info(
-                "Dependencies have not been met, marking test case as failure")
-            report = self.finish([], [], [], not_passed_dependencies)
-
-        if report is None:
-            logger.info("Verifying preconditions")
-            if self.wait_for_preconditions:
-                logger.info("Wait for preconditions is enabled")
-                preconditions_eval = self.verify_preconditions()
-                while not self.all_preconditions_nominal(preconditions_eval):
-                    sleep(self.sleep_rate)
-                    preconditions_eval = self.verify_preconditions()
-            else:
-                logger.info("Wait for preconditions is disabled")
-                preconditions_eval = self.verify_preconditions()
-                if not self.all_preconditions_nominal(preconditions_eval):
-                    report = self.finish(preconditions_eval, [], [])
-
-        if report is None:
-            logger.info("Running the body of the test")
-            self.run()
-            invariants_eval = self.verify_invariants()
-            logger.info("Verifying postconditions")
-            postconditions_eval = self.verify_postconditions()
-            report = self.finish(
-                preconditions_eval, invariants_eval, postconditions_eval)
-
-        return report
-
-    def finish(self, preconditions_evaluation, invariants,
-               postconditions_evaluation, not_passed_dependencies=None):
-        """
-        Finish executing the test case
-        """
-        if not_passed_dependencies is None:
-            not_passed_dependencies = []
-        self.ran = True
-        self.report = TestCaseReport(
-            self, preconditions_evaluation, invariants,
-            postconditions_evaluation, not_passed_dependencies)
-        self.tear_down()
-        return self.report
-
-    @abstractmethod
-    def run(self):
-        """
-        Runs the test
-        """
-        pass
+    def __init__(self, export_path=None):
+        if export_path is None:
+            export_path = strftime("%Y%m%d%H%M%S.xml")
+        self.export_path = export_path
 
 
 class Evaluation(object):
@@ -500,6 +507,9 @@ class Evaluator(object):
         else:
             raise Exception("Evaluator is neither a sensor nor callable")
 
+    def call_evaluator_with_data(self, data):
+        return self.evaluator(data)
+
 
 class Measurement(object):
     """
@@ -520,11 +530,10 @@ class Sensor(object):
 
     @abstractmethod
     def sense_internal(self):
-        """
-        Reads the sensor value
-        """
+        """Reads the sensor value"""
         pass
 
     def sense(self):
+        """Stores the last sensed value"""
         self.last_sensed = self.sense_internal()
         return self.last_sensed

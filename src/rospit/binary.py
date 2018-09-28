@@ -5,6 +5,24 @@ from abc import ABCMeta, abstractmethod
 from rospit.framework import Evaluator, Evaluation, Measurement, Condition, Sensor
 
 
+def binary_measure(evaluator):
+    """Evaluates and wraps the measurement"""
+    measurement = evaluator.call_evaluator()
+    return measurement_wrapper(measurement)
+
+
+def measurement_wrapper(measurement):
+    """Ensures that a measurement is properly wrapped in its BinaryMeasurement type"""
+    if isinstance(measurement, bool):
+        return BinaryMeasurement(measurement)
+    elif isinstance(measurement, BinaryMeasurement):
+        return measurement
+    else:
+        estr = "measurement should be boolean or a BinaryMeasurement, but got: {}"
+        raise TypeError(
+            estr.format(None if measurement is None else measurement.__class__.__name__))
+
+
 class BinaryConditionEvaluator(Evaluator):
     """
     Evaluator for binary values
@@ -16,7 +34,10 @@ class BinaryConditionEvaluator(Evaluator):
 
     def evaluate(self, condition, measurement=None):
         if measurement is None:
-            measurement = self.call_evaluator()
+            measurement = binary_measure(self)
+        else:
+            measurement = measurement_wrapper(measurement)
+        assert(isinstance(measurement, BinaryMeasurement))
 
         if isinstance(measurement, BinaryMeasurement):
             self.last_measurement_value = measurement.value
@@ -28,12 +49,13 @@ class BinaryConditionEvaluator(Evaluator):
         if isinstance(condition, BinaryCondition):
             self.last_condition_value = condition.value
         elif isinstance(condition, bool):
-           self.last_condition_value = condition
+            self.last_condition_value = condition
         else:
             raise Exception("Condition is of unexpected type")
 
         nominal = self.last_measurement_value == self.last_condition_value
         return Evaluation(measurement, condition, nominal)
+
 
 
 class StaticBooleanEvaluator(Evaluator):

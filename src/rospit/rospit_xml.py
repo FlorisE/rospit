@@ -277,7 +277,3 @@ class Parser(object):
             return NumericMessageEvaluator(element.attrib['topic'], element.attrib['type'], element.attrib.get('field', None))
         else:
             raise ValueError("Unexpected type {}".format(elem_type))
-
-
-if __name__ == "__main__":
-    pass

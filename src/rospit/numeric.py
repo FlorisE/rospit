@@ -9,6 +9,7 @@ from rospit.framework import Evaluator, Evaluation, CompositeEvaluation, Sensor,
 
 
 def numeric_measure(evaluator):
+    """Evaluates and wraps the measurement"""
     measurement = evaluator.call_evaluator()
     return measurement_wrapper(measurement)
 

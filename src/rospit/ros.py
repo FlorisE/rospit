@@ -1,7 +1,20 @@
-from rospit.framework import Evaluator, Evaluation, TestSuite, get_logger, Measurement
+"""ROS specific implementation of the testing framework"""
+import logging
+import sys
+import time
+import importlib
+import rospy
+import rosservice
+import rosmsg
+import genpy
+import std_msgs
+import rospit.test_runner
+from std_msgs.msg import String, Bool
+from rospit.framework import Evaluator, Evaluation, TestSuite, \
+                             get_logger, Measurement, TestCase
 from rospit.declarative import Step
 from rospit.binary import BinaryMeasurement
-from rospit.numeric import Limit, LowerLimitCondition, LowerLimitEvaluator, \
+from rospit.numeric import LowerLimitCondition, LowerLimitEvaluator, \
                            UpperLimitCondition, UpperLimitEvaluator, \
                            BothLimitsCondition, BothLimitsEvaluator, \
                            GreaterThanCondition, GreaterThanEvaluator, \
@@ -11,13 +24,23 @@ from rospit.numeric import Limit, LowerLimitCondition, LowerLimitEvaluator, \
                            LessThanCondition, LessThanEvaluator, \
                            LessThanOrEqualToCondition, LessThanOrEqualToEvaluator, \
                            NumericMeasurement
-import rospy
-import importlib
-import time
-import rosservice, genmsg, genpy
-import std_msgs
+from rospit_msgs.msg import ConditionEvaluationPairStamped, \
+                            TestSuiteReport as TestSuiteReportMessage
+from rospit_msgs.srv import ExecuteXMLTestSuite, GetAllReports
+
+
+INVARIANT_EVALUATIONS_TOPIC = "/invariant_evaluations"
+
+
+def wait_for_service(service_name):
+    """Prints a message and waits for the service"""
+    print("Waiting for {} service to become available".format(service_name))
+    rospy.wait_for_service(service_name)
+    return service_name
+
 
 def get_ros_type(type_string):
+    """Parses the type_string to get package and type"""
     parts = type_string.split("/")
     if len(parts) != 2:
         raise Exception("Type lookup requires two parts, split by a slash: Package and type")
@@ -26,35 +49,136 @@ def get_ros_type(type_string):
     return (package, ros_type)
 
 
-def get_subscriber(topic, msg_type_str, func, params=None):
-    package, ros_type = get_ros_type(msg_type_str)
-    mod = importlib.import_module(package + ".msg")
-    msg_type = getattr(mod, ros_type)
+def get_subscriber(topic, msg_type, func, params=None):
+    """Gets a ROS subscriber for the topic and type"""
+    if isinstance(msg_type, str):
+        package, ros_type = get_ros_type(msg_type)
+        mod = importlib.import_module(package + ".msg")
+        msg_type = getattr(mod, ros_type)
     if params is None:
         return rospy.Subscriber(topic, msg_type, func)
-    else:
-        return rospy.Subscriber(topic, msg_type, func, params)
+    return rospy.Subscriber(topic, msg_type, func, params)
 
 
 class ROSTestSuite(TestSuite):
-    def __init__(self, subscribers, name=""): 
+    """A ROS specific test suite"""
+    def __init__(self, subscribers, name=""):
         TestSuite.__init__(self, name)
         self.messages = dict()
         self.message_received_on = set()
         self.msg_value_subscribers = dict()
         self.msg_received_subscribers = dict()
         for topic, msg_type in subscribers.msg_value_subscribers:
-            self.msg_value_subscribers[topic] = get_subscriber(topic, msg_type, self.store_message, topic)
+            self.msg_value_subscribers[topic] = get_subscriber(
+                topic, msg_type, self.store_message, topic)
         for topic, msg_type in subscribers.msg_received_subscribers:
-            self.msg_received_subscribers[topic] = get_subscriber(topic, msg_type, self.store_msg_received_on, topic)
+            self.msg_received_subscribers[topic] = get_subscriber(
+                topic, msg_type, self.store_msg_received_on, topic)
 
     def store_message(self, data, topic):
+        """Stores the actual message"""
         self.messages[topic] = data
 
     def store_msg_received_on(self, data, topic):
+        """Stores on which topics messages have been received"""
         self.message_received_on.add(topic)
 
-    
+
+class ROSTestCase(TestCase):
+    """A ROS specific test case"""
+    def __init__(self, name="", preconditions=None, invariants=None,
+                 postconditions=None, wait_for_preconditions=False,
+                 sleep_rate=0.1, depends_on=None):
+        TestCase.__init__(self, name, preconditions, invariants,
+                          postconditions, wait_for_preconditions,
+                          sleep_rate, depends_on)
+        self.subscribers = []
+        self.publisher = rospy.Publisher(
+            INVARIANT_EVALUATIONS_TOPIC, ConditionEvaluationPairStamped, queue_size=100)
+        rospy.sleep(1) # allow subscribers to connect
+
+    def start_invariant_monitoring(self):
+        for invariant in self.invariants:
+            self.subscribers.append(self.get_subscriber(invariant))
+
+    def stop_invariant_monitoring(self):
+        for subscriber in self.subscribers:
+            subscriber.unregister()
+
+    def get_subscriber(self, invariant):
+        def subscribe(data):
+            measurement = invariant.evaluator.call_evaluator_with_data(data)
+            evaluation = invariant.evaluator.evaluate(invariant.condition, measurement)
+            ceps = ConditionEvaluationPairStamped()
+            ceps.condition_evaluation_pair.condition.name = String(invariant.condition.name)
+            ceps.condition_evaluation_pair.evaluation.nominal = Bool(evaluation.nominal)
+            ceps.condition_evaluation_pair.evaluation.payload = String(
+                evaluation.expected_actual_string())
+            self.publisher.publish(ceps)
+            print("publishing")
+        return get_subscriber(invariant.topic, invariant.msg_type, subscribe)
+
+
+class ROSInvariant(object):
+    def __init__(self, condition, evaluator, topic, msg_type):
+        self.condition = condition
+        self.evaluator = evaluator
+        self.topic = topic
+        self.msg_type = msg_type
+
+
+class ROSTestRunnerNode(object):
+    """
+    A node that runs tests and publishers their results
+    """
+    def __init__(self):
+        rospy.init_node("test_runner", anonymous=True)
+        self.reports = []
+        self.invariant_evaluations = []
+        self.execution_service = rospy.Service(
+            "execute_xml_test_suite", ExecuteXMLTestSuite, self.execute_xml_test_suite)
+        self.reports_service = rospy.Service(
+            "get_all_reports", GetAllReports, self.get_all_reports)
+        self.test_suite_report_publisher = rospy.Publisher(
+            "test_suite_reports", TestSuiteReportMessage)
+        self.invariant_evaluation_subscription = rospy.Subscriber(
+            INVARIANT_EVALUATIONS_TOPIC, ConditionEvaluationPairStamped,
+            self.add_invariant_evaluation)
+        self.spinning = False
+
+    def execute_xml_test_suite(self, request):
+        """
+        Execute a test suite specified in an XML file.
+        Request should be a string specifying the path to the test to run.
+        """
+        from rospit.rospit_xml import get_test_suite_from_xml_path
+        parser = get_test_suite_from_xml_path(request.path.data, True)
+        logger = logging.getLogger("rospit")
+        logger.setLevel(logging.INFO)
+        logger.addHandler(logging.StreamHandler(sys.stdout))
+        test_suite = parser.parse()
+        report = test_suite.run(logger)
+        self.test_suite_report_publisher.publish(report)
+        mapped_report = rospit.test_runner.map_test_suite_report(report)
+        self.reports.append(mapped_report)
+        return mapped_report
+
+    def get_all_reports(self):
+        """
+        Returns all the reports that have been generated since this service has been active
+        """
+        return self.reports
+
+    def add_invariant_evaluation(self, evaluation):
+        print("received evaluation")
+        self.invariant_evaluations.append(evaluation)
+
+    def spin(self):
+        """ Spins the node """
+        self.spinning = True
+        rospy.spin()
+
+
 class MessageValue(object):
     def __init__(self, topic, field, test_suite):
         self.topic = topic
@@ -130,10 +254,11 @@ class ExecutionReturnedEvaluator(Evaluator):
             measurement = Measurement(current)
 
         evaluation = Evaluation(measurement, condition, measurement.value == condition.value)
-        get_logger().debug("Condition {}, measurement {}, {}".format(condition, measurement, "nominal" if evaluation.nominal else "not nominal"))
+        get_logger().debug("Condition {}, measurement {}, {}".format(
+            condition, measurement, "nominal" if evaluation.nominal else "not nominal"))
         return evaluation
 
-        
+
 class NumericMessageEvaluator(MessageEvaluatorBase):
     def __init__(self, topic, topic_type, field=None):
         MessageEvaluatorBase.__init__(self, topic, topic_type, field)
@@ -166,7 +291,8 @@ class NumericMessageEvaluator(MessageEvaluatorBase):
 
         evaluation = evaluator_type(lambda: self.data).evaluate(condition, measurement)
 
-        get_logger().info("Condition {}, measurement {}, {}".format(condition, measurement, "nominal" if evaluation.nominal else "not nominal"))
+        get_logger().info("Condition {}, measurement {}, {}".format(
+            condition, measurement, "nominal" if evaluation.nominal else "not nominal"))
 
         return evaluation
 
@@ -175,13 +301,14 @@ class ServiceCall(Step):
     """
     A call to a ROS Service
     """
-    def __init__(self, service, service_type, parameters=None, msg_type=None, msg_args=None, save_result=False):
+    def __init__(self, service, service_type, parameters=None,
+                 msg_type=None, msg_args=None, save_result=False):
         Step.__init__(self, save_result)
         if parameters is None:
             parameters = dict()
         self.service = service
         self.service_type = service_type
-        self.parameters = parameters 
+        self.parameters = parameters
 
     def execute(self):
         return call_service(self.service, _fill_parameters(self.parameters))[1]
@@ -195,25 +322,31 @@ def call_service(service_name, service_args):
     request = service_class._request_class()
     try:
         now = rospy.get_rostime()
-        keys = { 'now': now, 'auto': std_msgs.msg.Header(stamp=now) }
+        keys = {'now': now, 'auto': std_msgs.msg.Header(stamp=now)}
         genpy.message.fill_message_args(request, service_args, keys=keys)
     except genpy.MessageException as e:
         def argsummary(args):
             if type(args) in [tuple, list]:
-                return '\n'.join([' * %s (type %s)'%(a, type(a).__name__) for a in args])
+                return '\n'.join([' * %s (type %s)' % (a, type(a).__name__) for a in args])
             else:
-                return ' * %s (type %s)'%(args, type(args).__name__)
-            raise rosservice.ROSServiceException("Incompatible arguments to call service:\n%s\nProvided arguments are:\n%s\n\nService arguments are: [%s]"%(e, argsummary(service_args), genpy.message.get_printable_message_args(request)))
+                return ' * %s (type %s)' % (args, type(args).__name__)
+        raise rosservice.ROSServiceException(
+            "Incompatible arguments to call service:\n%s\n" +
+            "Provided arguments are:\n%s\n\n" +
+            "Service arguments are: [%s]" % (e, argsummary(service_args),
+                                             genpy.message.get_printable_message_args(request)))
     try:
         return request, rospy.ServiceProxy(service_name, service_class)(request)
     except rospy.ServiceException as e:
         raise rosservice.ROSServiceException(str(e))
     except genpy.SerializationError as e:
-        raise rosservice.ROSServiceException("Unable to send request. One of the fields has an incorrect type:\n"+\
-                                             "  %s\n\nsrv file:\n%s"%(e, rosmsg.get_srv_text(service_class._type)))
+        raise rosservice.ROSServiceException(
+            "Unable to send request. One of the fields has an incorrect type:\n" +
+            "  %s\n\nsrv file:\n%s" % (e, rosmsg.get_srv_text(service_class._type)))
     except rospy.ROSSerializationException as e:
-        raise rosservice.ROSServiceException("Unable to send request. One of the fields has an incorrect type:\n"+\
-                                             "  %s\n\nsrv file:\n%s"%(e, rosmsg.get_srv_text(service_class._type)))
+        raise rosservice.ROSServiceException(
+            "Unable to send request. One of the fields has an incorrect type:\n" +
+            "  %s\n\nsrv file:\n%s" % (e, rosmsg.get_srv_text(service_class._type)))
 
 
 def _fill_parameters(parameters):
