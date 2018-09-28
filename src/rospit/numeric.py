@@ -32,7 +32,7 @@ class LowerLimitEvaluator(Evaluator):
     def __init__(self, evaluator):
         Evaluator.__init__(self, evaluator)
 
-    def evaluate(self, condition, measurement=None):
+    def evaluate_internal(self, condition, measurement=None):
         """
         Verifies whether measurement matches the lower limit condition
         """
@@ -57,7 +57,7 @@ class UpperLimitEvaluator(Evaluator):
     def __init__(self, evaluator):
         Evaluator.__init__(self, evaluator)
 
-    def evaluate(self, condition, measurement=None):
+    def evaluate_internal(self, condition, measurement=None):
         """
         Verifies whether measurement matches the upper limit condition
         """
@@ -83,7 +83,7 @@ class BothLimitsEvaluator(LowerLimitEvaluator, UpperLimitEvaluator):
         LowerLimitEvaluator.__init__(self, evaluator)
         UpperLimitEvaluator.__init__(self, evaluator)
 
-    def evaluate(self, condition, measurement=None):
+    def evaluate_internal(self, condition, measurement=None):
         """
         Verifies whether measurement matches the lower limit and
         upper limit conditions
@@ -94,9 +94,9 @@ class BothLimitsEvaluator(LowerLimitEvaluator, UpperLimitEvaluator):
             measurement = measurement_wrapper(measurement)
         assert(isinstance(measurement, NumericMeasurement))
 
-        lower_limit_eval = LowerLimitEvaluator.evaluate(
+        lower_limit_eval = LowerLimitEvaluator.evaluate_internal(
             self, condition, measurement)
-        upper_limit_eval = UpperLimitEvaluator.evaluate(
+        upper_limit_eval = UpperLimitEvaluator.evaluate_internal(
             self, condition, measurement)
 
         return CompositeEvaluation(
@@ -108,7 +108,7 @@ class GreaterThanEvaluator(Evaluator):
     def __init__(self, evaluator):
         Evaluator.__init__(self, evaluator)
 
-    def evaluate(self, condition, measurement=None):
+    def evaluate_internal(self, condition, measurement=None):
         if measurement is None:
             measurement = numeric_measure(self)
         else:
@@ -122,7 +122,7 @@ class GreaterThanOrEqualToEvaluator(Evaluator):
     def __init__(self, evaluator):
         Evaluator.__init__(self, evaluator)
 
-    def evaluate(self, condition, measurement=None):
+    def evaluate_internal(self, condition, measurement=None):
         if measurement is None:
             measurement = numeric_measure(self)
         else:
@@ -136,7 +136,7 @@ class EqualToEvaluator(Evaluator):
     def __init__(self, evaluator):
         Evaluator.__init__(self, evaluator)
 
-    def evaluate(self, condition, measurement=None):
+    def evaluate_internal(self, condition, measurement=None):
         if measurement is None:
             measurement = numeric_measure(self)
         else:
@@ -150,7 +150,7 @@ class NotEqualToEvaluator(Evaluator):
     def __init__(self, evaluator):
         Evaluator.__init__(self, evaluator)
 
-    def evaluate(self, condition, measurement=None):
+    def evaluate_internal(self, condition, measurement=None):
         if measurement is None:
             measurement = numeric_measure(self)
         else:
@@ -164,7 +164,7 @@ class LessThanOrEqualToEvaluator(Evaluator):
     def __init__(self, evaluator):
         Evaluator.__init__(self, evaluator)
 
-    def evaluate(self, condition, measurement=None):
+    def evaluate_internal(self, condition, measurement=None):
         if measurement is None:
             measurement = numeric_measure(self)
         else:
@@ -178,7 +178,7 @@ class LessThanEvaluator(Evaluator):
     def __init__(self, evaluator):
         Evaluator.__init__(self, evaluator)
 
-    def evaluate(self, condition, measurement=None):
+    def evaluate_internal(self, condition, measurement=None):
         if measurement is None:
             measurement = numeric_measure(self)
         else:

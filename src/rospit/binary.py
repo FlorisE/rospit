@@ -32,7 +32,7 @@ class BinaryConditionEvaluator(Evaluator):
         self.last_measurement_value = None
         self.last_condition_value = None
 
-    def evaluate(self, condition, measurement=None):
+    def evaluate_internal(self, condition, measurement=None):
         if measurement is None:
             measurement = binary_measure(self)
         else:
@@ -66,7 +66,7 @@ class StaticBooleanEvaluator(Evaluator):
             Evaluator.__init__(self, AlwaysFalseSensor())
         self.always_true = always_true
 
-    def evaluate(self, condition, measurement=None):
+    def evaluate_internal(self, condition, measurement=None):
         return Evaluation(BinaryMeasurement(self.always_true), condition, True)
 
 

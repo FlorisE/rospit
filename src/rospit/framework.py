@@ -2,6 +2,7 @@
 
 from abc import ABCMeta, abstractmethod
 from time import sleep, strftime
+from collections import defaultdict
 import logging
 import future  # noqa:401, pylint: disable=W0611
 
@@ -44,17 +45,18 @@ def get_logger():
     return TEST_RUNNER_STATE.logger
 
 
-STATUS_MESSAGE_PASSED = '\033[92m' + "PASSED" + '\033[0m'
-STATUS_MESSAGE_FAILED = '\033[91m' + "FAILED" + '\033[0m'
+COLOR_GREEN = '\033[92m'
+COLOR_RED = '\033[91m'
+RESET_FORMATTING = '\033[0m'
 
 
 def status_message_from_boolean(value):
     """
     From a boolean value, return the status message
     """
-    if value:
-        return STATUS_MESSAGE_PASSED
-    return STATUS_MESSAGE_FAILED
+    if value.passed:
+        return COLOR_GREEN + "PASSED" + RESET_FORMATTING
+    return COLOR_RED + "FAILED (%s)" % value.failure_type + RESET_FORMATTING
 
 
 class Runner(object):
@@ -78,7 +80,7 @@ class Runner(object):
         self.last_suite = test_suite
         test_suite_report = test_suite.run(self.logger)
         for test_case_report in test_suite_report.test_case_reports:
-            status_msg = status_message_from_boolean(test_case_report.passed)
+            status_msg = status_message_from_boolean(test_case_report)
             self.logger.info("%s: %s", test_case_report.test_case.name, status_msg)
 
         if self.xml_output_settings is not None:
@@ -122,6 +124,18 @@ def get_failed_conditions(conditions):
     return ", ".join([c.condition.name for c in conditions if not c.nominal])
 
 
+def all_invariants_nominal(invariants):
+    """Checks if for each invariant, all of its evaluations are nominal"""
+    invariant_evaluations = []
+    for invariant, evaluations in invariants.iteritems():
+        invariant_evaluations.append(
+            Evaluation(
+                Measurement(evaluations),
+                invariant.condition,
+                all_conditions_nominal(evaluations)))
+    return all_conditions_nominal(invariant_evaluations)
+
+
 def all_conditions_nominal(conditions):
     """
     Checks whether all conditions are nominal
@@ -152,7 +166,7 @@ class TestCase(object):
             depends_on = []
         self.preconditions = preconditions
         self.invariants = invariants
-        self.invariants_evaluation = []
+        self.invariants_evaluation = defaultdict(list)
         self.postconditions = postconditions
         self.wait_for_preconditions = wait_for_preconditions
         self.sleep_rate = sleep_rate
@@ -217,7 +231,7 @@ class TestCase(object):
             report = self.finish([], [], not_passed_dependencies)
 
         if report is None:
-            logger.info("Verifying preconditions")
+            logger.info("Evaluating preconditions")
             if self.wait_for_preconditions:
                 logger.info("Wait for preconditions is enabled")
                 preconditions_eval = self.verify_preconditions()
@@ -235,7 +249,7 @@ class TestCase(object):
             self.start_invariant_monitoring()
             self.run()
             self.stop_invariant_monitoring()
-            logger.info("Verifying postconditions")
+            logger.info("Evaluating postconditions")
             postconditions_eval = self.verify_postconditions()
             report = self.finish(
                 preconditions_eval, postconditions_eval)
@@ -310,7 +324,7 @@ class TestCaseReport(object):
         self.postconditions = postconditions
         self.not_passed_dependencies = not_passed_dependencies
         self.preconditions_nominal = all_conditions_nominal(self.preconditions)
-        self.invariants_nominal = all_conditions_nominal(self.invariants)
+        self.invariants_nominal = all_invariants_nominal(self.invariants)
         self.postconditions_nominal = all_conditions_nominal(
             self.postconditions)
         self.passed = (
@@ -318,12 +332,16 @@ class TestCaseReport(object):
             self.invariants_nominal and
             self.postconditions_nominal and
             not self.not_passed_dependencies)
-        self.failure_type = (
-            None if self.passed else
-            "dependencies" if self.not_passed_dependencies else
-            "preconditions" if not self.preconditions_nominal else
-            "invariants" if not self.invariants_nominal else
-            "postconditions" if not self.postconditions_nominal else "")
+        self.failure_types = []
+        if self.not_passed_dependencies:
+            self.failure_types.append("dependencies")
+        if not self.preconditions_nominal:
+            self.failure_types.append("preconditions")
+        if not self.invariants_nominal:
+            self.failure_types.append("invariants")
+        if not self.postconditions_nominal:
+            self.failure_types.append("postconditions")
+        self.failure_type = None if self.passed else ", ".join(self.failure_types)
 
     def get_failure(self):
         """
@@ -490,11 +508,22 @@ class Evaluator(object):
         self.evaluator = evaluator
 
     @abstractmethod
-    def evaluate(self, condition, measurement):
-        """
-        Executes the evaluator by checking the measurement using the condition
-        """
+    def evaluate_internal(self, condition, measurement=None):
+        """Should be implemented by child"""
         pass
+
+    def evaluate(self, condition, measurement=None):
+        """
+        Executes the evaluator by checking the measurement using the condition.
+        Should return an instance of Evaluation
+        """
+        evaluation = self.evaluate_internal(condition, measurement)
+        get_logger().debug("Condition %s, measurement %s, %s",
+                           condition,
+                           evaluation.measurement,
+                           # in case measurement is None it will be filled by the evaluation
+                           "nominal" if evaluation.nominal else "not nominal")
+        return evaluation
 
     def call_evaluator(self):
         """
@@ -517,6 +546,9 @@ class Measurement(object):
     """
     def __init__(self, value):
         self.value = value
+
+    def __repr__(self):
+        return "{}({})".format(self.__class__.__name__, self.value)
 
 
 class Sensor(object):

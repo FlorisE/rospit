@@ -3,12 +3,16 @@ from rospit.framework import TestCase
 
 
 class DeclarativeTestCase(TestCase):
-    def __init__(self, run_steps=None, set_up_steps=None, tear_down_steps=None,\
-                 name="", preconditions=None, invariants=None,\
-                 postconditions=None, wait_for_preconditions=False,\
+    """
+    A test case that completely declares how it should be executed.
+    Can be used in for example scripting environments for creating test cases.
+    """
+    def __init__(self, run_steps=None, set_up_steps=None, tear_down_steps=None,
+                 name="", preconditions=None, invariants=None,
+                 postconditions=None, wait_for_preconditions=False,
                  sleep_rate=0.1, depends_on=None):
-        TestCase.__init__(\
-            self, name, preconditions, invariants, postconditions, \
+        TestCase.__init__(
+            self, name, preconditions, invariants, postconditions,
             wait_for_preconditions, sleep_rate, depends_on)
         if set_up_steps is None:
             set_up_steps = []
@@ -22,16 +26,19 @@ class DeclarativeTestCase(TestCase):
         self.execution_result = None
 
     def set_up(self):
+        """Set up the test case"""
         for step in self.set_up_steps:
             step.execute()
 
     def run(self):
+        """Runs the test case"""
         for step in self.run_steps:
             result = step.execute()
             if step.save_result:
                 self.execution_result = result
 
     def tear_down(self):
+        """Tears down the test case"""
         for step in self.tear_down_steps:
             step.execute()
 
@@ -47,6 +54,7 @@ class Step(object):
 
     @abstractmethod
     def execute(self):
+        """Executes the step"""
         pass
 
     def __call__(self):
@@ -61,4 +69,5 @@ class DummyStep(Step):
         Step.__init__(self, save_result)
 
     def execute(self):
+        """Executes the step"""
         pass

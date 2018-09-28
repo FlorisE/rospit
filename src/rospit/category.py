@@ -12,7 +12,7 @@ class InCategoryConditionEvaluator(Evaluator):
     def __init__(self, sensor):
         Evaluator.__init__(self, sensor)
 
-    def evaluate(self, condition, measurement=None):
+    def evaluate_internal(self, condition, measurement=None):
         if measurement is None:
             measurement = self.call_evaluator()
         nominal = measurement.category in condition.categories

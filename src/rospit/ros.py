@@ -95,36 +95,53 @@ class ROSTestCase(TestCase):
         self.subscribers = []
         self.publisher = rospy.Publisher(
             INVARIANT_EVALUATIONS_TOPIC, ConditionEvaluationPairStamped, queue_size=100)
-        rospy.sleep(1) # allow subscribers to connect
+        rospy.sleep(1)  # allow subscribers to connect
 
     def start_invariant_monitoring(self):
+        """Starts monitoring the invariants"""
         for invariant in self.invariants:
-            self.subscribers.append(self.get_subscriber(invariant))
+            self.subscribers.append(self.get_invariant_subscriber(invariant))
 
     def stop_invariant_monitoring(self):
+        """Stops monitoring the invariants"""
         for subscriber in self.subscribers:
             subscriber.unregister()
 
-    def get_subscriber(self, invariant):
+    def get_invariant_subscriber(self, invariant):
+        """Creates a subscriber for monitoring the invariant"""
         def subscribe(data):
-            measurement = invariant.evaluator.call_evaluator_with_data(data)
-            evaluation = invariant.evaluator.evaluate(invariant.condition, measurement)
+            """Processes data received on the invariant"""
+            evaluation = invariant.evaluate(data)
+            self.invariants_evaluation[invariant].append(evaluation)
             ceps = ConditionEvaluationPairStamped()
             ceps.condition_evaluation_pair.condition.name = String(invariant.condition.name)
             ceps.condition_evaluation_pair.evaluation.nominal = Bool(evaluation.nominal)
             ceps.condition_evaluation_pair.evaluation.payload = String(
                 evaluation.expected_actual_string())
             self.publisher.publish(ceps)
-            print("publishing")
         return get_subscriber(invariant.topic, invariant.msg_type, subscribe)
 
 
 class ROSInvariant(object):
+    """Some condition that should hold throughout execution of a test case"""
     def __init__(self, condition, evaluator, topic, msg_type):
         self.condition = condition
         self.evaluator = evaluator
         self.topic = topic
         self.msg_type = msg_type
+
+    def call_evaluator_with_data(self, data):
+        """Convenience method for calling the evaluator with data supplied"""
+        return self.evaluator.call_evaluator_with_data(data)
+
+    def evaluate_measurement(self, measurement):
+        """Convenience method for evaluating the measurement"""
+        return self.evaluator.evaluate(self.condition, measurement)
+
+    def evaluate(self, data):
+        """Convenience method for evaluating the invariant"""
+        measurement = self.call_evaluator_with_data(data)
+        return self.evaluate_measurement(measurement)
 
 
 class ROSTestRunnerNode(object):
@@ -170,7 +187,7 @@ class ROSTestRunnerNode(object):
         return self.reports
 
     def add_invariant_evaluation(self, evaluation):
-        print("received evaluation")
+        """Stores the invariant evaluation"""
         self.invariant_evaluations.append(evaluation)
 
     def spin(self):
@@ -223,7 +240,7 @@ class MessageReceivedEvaluator(MessageEvaluatorBase):
     def __init__(self, topic, topic_type, field=None):
         MessageEvaluatorBase.__init__(self, topic, topic_type, field)
 
-    def evaluate(self, condition, measurement=None):
+    def evaluate_internal(self, condition, measurement=None):
         if measurement is None:
             measurement = BinaryMeasurement(self.received)
         return Evaluation(measurement, condition, self.received == condition.value)
@@ -233,7 +250,7 @@ class MessageEvaluator(MessageEvaluatorBase):
     def __init__(self, topic, topic_type, field=None):
         MessageEvaluatorBase.__init__(self, topic, topic_type, field)
 
-    def evaluate(self, condition, measurement=None):
+    def evaluate_internal(self, condition, measurement=None):
         if measurement is None:
             measurement = self.data
         return Evaluation(measurement, condition, self.data == condition.value)
@@ -244,7 +261,7 @@ class ExecutionReturnedEvaluator(Evaluator):
         self.test_case = test_case
         self.field = field
 
-    def evaluate(self, condition, measurement=None):
+    def evaluate_internal(self, condition, measurement=None):
         if measurement is None:
             current = self.test_case.execution_result
             if self.field is not None:
@@ -254,8 +271,6 @@ class ExecutionReturnedEvaluator(Evaluator):
             measurement = Measurement(current)
 
         evaluation = Evaluation(measurement, condition, measurement.value == condition.value)
-        get_logger().debug("Condition {}, measurement {}, {}".format(
-            condition, measurement, "nominal" if evaluation.nominal else "not nominal"))
         return evaluation
 
 
@@ -263,7 +278,7 @@ class NumericMessageEvaluator(MessageEvaluatorBase):
     def __init__(self, topic, topic_type, field=None):
         MessageEvaluatorBase.__init__(self, topic, topic_type, field)
 
-    def evaluate(self, condition, measurement=None):
+    def evaluate_internal(self, condition, measurement=None):
         if measurement is None:
             while self.data is None:
                 time.sleep(1)
